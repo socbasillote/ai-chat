@@ -1,4 +1,5 @@
 import "dotenv/config";
+import type { SignOptions } from "jsonwebtoken";
 
 const requiredEnv = (name: string): string => {
   const value = process.env[name];
@@ -18,7 +19,9 @@ export const env = {
   mongodbUri: requiredEnv("MONGODB_URI"),
 
   jwtSecret: requiredEnv("JWT_SECRET"),
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
+  jwtExpiresIn: (process.env.JWT_EXPIRES_IN ?? "7d") as NonNullable<
+    SignOptions["expiresIn"]
+  >,
 
   llamaServerUrl: requiredEnv("LLAMA_SERVER_URL"),
   llamaModel: requiredEnv("LLAMA_MODEL"),
