@@ -4,21 +4,17 @@ import { AuthenticatedRequest } from "../types/auth.js";
 
 import { verifyAccessToken } from "../utils/jwt.js";
 
+import { AppError } from "../utils/app-error.js";
+
 export const authenticate = (
   req: AuthenticatedRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction,
 ): void => {
   const authorization = req.headers.authorization;
 
   if (!authorization?.startsWith("Bearer ")) {
-    res.status(401).json({
-      success: false,
-      error: {
-        code: "UNAUTHORIZED",
-        message: "Authentication required",
-      },
-    });
+    next(new AppError("Authentication required", 401, "UNAUTHORIZED"));
 
     return;
   }
@@ -34,12 +30,12 @@ export const authenticate = (
 
     next();
   } catch {
-    res.status(401).json({
-      success: false,
-      error: {
-        code: "INVALID_TOKEN",
-        message: "Invalid or expired authentication token",
-      },
-    });
+    next(
+      new AppError(
+        "Invalid or expired authentication token",
+        401,
+        "INVALID_TOKEN",
+      ),
+    );
   }
 };

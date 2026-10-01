@@ -4,15 +4,19 @@ import User from "../models/User.js";
 import { generateAccessToken } from "../utils/jwt.js";
 import { LoginInput, RegisterInput } from "./auth.schemas.js";
 
+import { AppError } from "../utils/app-error.js";
+
 export const registerUser = async (input: RegisterInput) => {
   const existingUser = await User.findOne({
     email: input.email,
   });
 
   if (existingUser) {
-    const error = new Error("Email is already registered.");
-    error.name = "ConflictError";
-    throw error;
+    throw new AppError(
+      "Email is already registered.",
+      409,
+      "EMAIL_ALREADY_REGISTERED",
+    );
   }
 
   const passwordHash = await bcrypt.hash(input.password, 12);
@@ -41,9 +45,11 @@ export const loginUser = async (input: LoginInput) => {
   });
 
   if (!user) {
-    const error = new Error("Invalid email or password.");
-    error.name = "AuthenticationError";
-    throw error;
+    throw new AppError(
+      "Invalid email or password.",
+      401,
+      "INVALID_CREDENTIALS",
+    );
   }
 
   const passwordMatches = await bcrypt.compare(
@@ -52,9 +58,11 @@ export const loginUser = async (input: LoginInput) => {
   );
 
   if (!passwordMatches) {
-    const error = new Error("Invalid email or password.");
-    error.name = "AuthenticationError";
-    throw error;
+    throw new AppError(
+      "Invalid email or password.",
+      401,
+      "INVALID_CREDENTIALS",
+    );
   }
 
   const accessToken = generateAccessToken(user._id.toString());
@@ -75,9 +83,7 @@ export const getCurrentUser = async (userId: string) => {
   );
 
   if (!user) {
-    const error = new Error("User not found.");
-    error.name = "NotFoundError";
-    throw error;
+    throw new AppError("User not found.", 404, "USER_NOT_FOUND");
   }
 
   return {
