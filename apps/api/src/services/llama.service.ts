@@ -101,3 +101,157 @@ export const generateCompletion = async (
 
   return content;
 };
+
+export const streamCompletion = async (
+  messages: LlamaMessage[],
+  onChunk: (content: string) => void,
+  signal?: AbortSignal,
+): Promise<string> => {
+  const requestBody = buildRequestBody(messages);
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${env.llamaServerUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: requestBody.model,
+        messages: requestBody.messages,
+        temperature: requestBody.temperature,
+        max_tokens: requestBody.maxTokens,
+        stream: true,
+      }),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (error) {
+    if (signal?.aborted) {
+      throw error;
+    }
+
+    throw new AppError(
+      "Unable to connect to the Llama inference server.",
+      503,
+      "LLAMA_SERVER_UNAVAILABLE",
+    );
+  }
+
+  if (!response.ok) {
+    let message = "The Llama inference server returned an error.";
+
+    try {
+      const errorBody = (await response.json()) as {
+        error?: {
+          message?: string;
+        };
+      };
+
+      if (errorBody.error?.message) {
+        message = errorBody.error.message;
+      }
+    } catch {
+      // Ignore invalid error response bodies.
+    }
+
+    throw new AppError(message, 502, "LLAMA_INFERENCE_ERROR");
+  }
+
+  if (!response.body) {
+    throw new AppError(
+      "The Llama inference server returned an empty stream.",
+      502,
+      "LLAMA_EMPTY_STREAM",
+    );
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  let buffer = "";
+  let fullContent = "";
+
+  const processLine = (line: string): boolean => {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine) {
+      return false;
+    }
+
+    if (!trimmedLine.startsWith("data:")) {
+      return false;
+    }
+
+    const data = trimmedLine.slice("data:".length).trim();
+
+    if (data === "[DONE]") {
+      return true;
+    }
+
+    try {
+      const parsed = JSON.parse(data) as {
+        choices?: Array<{
+          delta?: {
+            content?: string;
+          };
+        }>;
+      };
+
+      const content = parsed.choices?.[0]?.delta?.content;
+
+      if (content) {
+        fullContent += content;
+        onChunk(content);
+      }
+    } catch {
+      // Ignore malformed SSE data chunks.
+    }
+
+    return false;
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, {
+        stream: true,
+      });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const finished = processLine(line);
+
+        if (finished) {
+          await reader.cancel();
+          return fullContent;
+        }
+      }
+    }
+
+    buffer += decoder.decode();
+
+    if (buffer.trim()) {
+      processLine(buffer);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!fullContent.trim()) {
+    throw new AppError(
+      "The Llama inference server returned an empty response.",
+      502,
+      "LLAMA_EMPTY_RESPONSE",
+    );
+  }
+
+  return fullContent;
+};
