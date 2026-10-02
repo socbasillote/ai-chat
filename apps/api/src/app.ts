@@ -2,6 +2,7 @@ import express from "express";
 
 import authRoutes from "./routes/auth.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
+import messageRoutes from "./routes/message.routes.js";
 
 import { errorHandler } from "./middleware/error.middleware.js";
 
@@ -19,6 +20,8 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRoutes);
 
 app.use("/api/conversations", conversationRoutes);
+
+app.use("/api/conversations", messageRoutes);
 
 app.use(errorHandler);
 
