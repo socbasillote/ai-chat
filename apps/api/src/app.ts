@@ -1,3 +1,4 @@
+﻿import cors from "cors";
 import express from "express";
 
 import authRoutes from "./routes/auth.routes.js";
@@ -7,9 +8,11 @@ import llamaRoutes from "./routes/llama.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
 
 import { errorHandler } from "./middleware/error.middleware.js";
+import { env } from "./config/env.js";
 
 const app = express();
 
+app.use(cors({ origin: env.corsOrigin }));
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => {
@@ -30,3 +33,5 @@ app.use("/api/conversations", chatRoutes);
 app.use(errorHandler);
 
 export default app;
+
+
