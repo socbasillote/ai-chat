@@ -3,7 +3,7 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 const getAccessToken = (): string | null => {
-  return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YWJmMTRiOWMzZjMzYjIyOGFiNzg4NzAiLCJpYXQiOjE3OTEwMjIyMDEsImV4cCI6MTc5MTYyNzAwMX0.HFrR4c9uWRUH4NuLPqAy9eqZxvVeVHUYe7XXA9osDxA";
+  return localStorage.getItem("accessToken");
 };
 
 export const streamChat = async ({

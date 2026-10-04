@@ -6,6 +6,32 @@ import { LoginInput, RegisterInput } from "./auth.schemas.js";
 
 import { AppError } from "../utils/app-error.js";
 
+const resolveName = (input: RegisterInput): string => {
+  return (
+    input.name ?? `${input.firstName ?? ""} ${input.lastName ?? ""}`.trim()
+  ).trim();
+};
+
+const mapUser = (user: {
+  _id: { toString: () => string };
+  name: string;
+  email: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}) => {
+  const [firstName, ...lastNameParts] = user.name.trim().split(/\s+/);
+
+  return {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    firstName: firstName ?? "",
+    lastName: lastNameParts.join(" "),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+};
+
 export const registerUser = async (input: RegisterInput) => {
   const existingUser = await User.findOne({
     email: input.email,
@@ -19,10 +45,11 @@ export const registerUser = async (input: RegisterInput) => {
     );
   }
 
+  const name = resolveName(input);
   const passwordHash = await bcrypt.hash(input.password, 12);
 
   const user = await User.create({
-    name: input.name,
+    name,
     email: input.email,
     passwordHash,
   });
@@ -30,11 +57,7 @@ export const registerUser = async (input: RegisterInput) => {
   const accessToken = generateAccessToken(user._id.toString());
 
   return {
-    user: {
-      id: user._id.toString(),
-      name: user.name,
-      email: user.email,
-    },
+    user: mapUser(user),
     accessToken,
   };
 };
@@ -68,11 +91,7 @@ export const loginUser = async (input: LoginInput) => {
   const accessToken = generateAccessToken(user._id.toString());
 
   return {
-    user: {
-      id: user._id.toString(),
-      name: user.name,
-      email: user.email,
-    },
+    user: mapUser(user),
     accessToken,
   };
 };
@@ -86,11 +105,5 @@ export const getCurrentUser = async (userId: string) => {
     throw new AppError("User not found.", 404, "USER_NOT_FOUND");
   }
 
-  return {
-    id: user._id.toString(),
-    name: user.name,
-    email: user.email,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  };
+  return mapUser(user);
 };
