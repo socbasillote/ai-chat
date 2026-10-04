@@ -8,8 +8,9 @@ import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { StreamingTest } from "./features/chat/StreamingTest";
 import { createConversation } from "./services/conversation.service";
 import { useAppSelector } from "./store/hooks";
+import { ChatPage } from "./pages/ChatPage";
 
-const ChatScreen = () => {
+/* const ChatScreen = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +48,7 @@ const ChatScreen = () => {
   }
 
   return <StreamingTest conversationId={conversationId} />;
-};
+}; */
 
 const AppRoutes = () => {
   const { isAuthenticated, initialized } = useAppSelector(
@@ -74,7 +75,7 @@ const AppRoutes = () => {
         path="/"
         element={
           <ProtectedRoute>
-            <ChatScreen />
+            <ChatPage />
           </ProtectedRoute>
         }
       />

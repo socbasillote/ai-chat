@@ -43,7 +43,14 @@ export const useChatStream = (): UseChatStreamResult => {
           onEvent: (event: StreamEvent) => {
             switch (event.type) {
               case "start":
-                setStreamingMessage(null);
+                setStreamingMessage({
+                  id: event.message.id,
+                  conversationId: event.message.conversationId,
+                  role: event.message.role,
+                  content: "",
+                  createdAt: event.message.createdAt,
+                  updatedAt: event.message.updatedAt,
+                });
                 break;
 
               case "chunk":
@@ -67,12 +74,20 @@ export const useChatStream = (): UseChatStreamResult => {
                 break;
 
               case "done":
-                setStreamingMessage(null);
+                setStreamingMessage((current) => {
+                  if (!current) {
+                    return event.message;
+                  }
+
+                  return {
+                    ...event.message,
+                    content: current.content || event.message.content,
+                  };
+                });
                 break;
 
               case "error":
                 setError(event.message);
-                setStreamingMessage(null);
                 break;
             }
           },
@@ -117,5 +132,3 @@ export const useChatStream = (): UseChatStreamResult => {
     clearError,
   };
 };
-
-
