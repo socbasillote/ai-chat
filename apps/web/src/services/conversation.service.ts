@@ -6,33 +6,73 @@ const getAccessToken = (): string | null => {
   return localStorage.getItem("accessToken");
 };
 
-export const createConversation = async (
-  title = "New conversation",
-): Promise<Conversation> => {
+const getAuthHeaders = (): HeadersInit => {
   const token = getAccessToken();
 
   if (!token) {
     throw new Error("Authentication required.");
   }
 
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+};
+
+export const createConversation = async (
+  title: string,
+): Promise<Conversation> => {
   const response = await fetch(`${API_URL}/api/conversations`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ title }),
   });
 
+  const data = await response.json();
+
   if (!response.ok) {
-    throw new Error("Unable to create conversation.");
+    throw new Error(data?.error?.message ?? "Unable to create conversation.");
   }
 
-  const data = (await response.json()) as { data?: Conversation };
+  return data.data as Conversation;
+};
 
-  if (!data.data?.id) {
-    throw new Error("The server returned an invalid conversation.");
+export const updateConversation = async (
+  conversationId: string,
+  title: string,
+): Promise<Conversation> => {
+  const response = await fetch(
+    `${API_URL}/api/conversations/${conversationId}`,
+    {
+      method: "PATCH",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ title }),
+    },
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message ?? "Unable to update conversation.");
   }
 
-  return data.data;
+  return data.data as Conversation;
+};
+
+export const deleteConversation = async (
+  conversationId: string,
+): Promise<void> => {
+  const response = await fetch(
+    `${API_URL}/api/conversations/${conversationId}`,
+    {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    },
+  );
+
+  if (!response.ok) {
+    const data = await response.json();
+
+    throw new Error(data?.error?.message ?? "Unable to delete conversation.");
+  }
 };

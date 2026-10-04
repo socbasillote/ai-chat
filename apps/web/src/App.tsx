@@ -1,12 +1,10 @@
 ﻿import "./App.css";
-import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
-import { StreamingTest } from "./features/chat/StreamingTest";
-import { createConversation } from "./services/conversation.service";
+
 import { useAppSelector } from "./store/hooks";
 import { ChatPage } from "./pages/ChatPage";
 

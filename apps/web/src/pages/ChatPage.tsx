@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   fetchConversations,
@@ -6,6 +6,14 @@ import {
   setActiveConversation,
 } from "../store/chatSlice";
 import { useChat } from "../hooks/use-chats";
+
+import {
+  createNewConversation,
+  renameConversation,
+  removeConversation,
+} from "../store/chatSlice";
+
+import { useAutoScroll } from "../hooks/use-auto-scroll";
 
 export const ChatPage = () => {
   const dispatch = useAppDispatch();
@@ -19,12 +27,13 @@ export const ChatPage = () => {
     streamingMessage,
     isStreaming,
     isLoading,
-    error,
     sendMessage,
     stopGeneration,
   } = useChat();
 
   const [input, setInput] = useState("");
+
+  const messageContainerRef = useAutoScroll([messages, streamingMessage]);
 
   useEffect(() => {
     dispatch(fetchConversations());
@@ -40,6 +49,16 @@ export const ChatPage = () => {
     if (isStreaming) return;
 
     dispatch(setActiveConversation(conversationId));
+  };
+
+  const handleNewConversation = async () => {
+    if (isStreaming) return;
+
+    const result = await dispatch(createNewConversation("New conversation"));
+
+    if (createNewConversation.fulfilled.match(result)) {
+      dispatch(setActiveConversation(result.payload.id));
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -73,32 +92,88 @@ export const ChatPage = () => {
       >
         <h2>Conversations</h2>
 
+        <button
+          type="button"
+          onClick={handleNewConversation}
+          disabled={isStreaming || isLoading}
+          style={{
+            width: "100%",
+            padding: "10px",
+            marginBottom: "16px",
+          }}
+        >
+          + New conversation
+        </button>
+
         {conversations.length === 0 ? (
           <p>No conversations yet.</p>
         ) : (
           conversations.map((conversation) => (
-            <button
+            <div
               key={conversation.id}
-              type="button"
-              onClick={() => handleSelectConversation(conversation.id)}
-              disabled={isStreaming}
               style={{
-                display: "block",
-                width: "100%",
-                padding: "10px",
+                display: "flex",
+                gap: "4px",
                 marginBottom: "8px",
-                textAlign: "left",
-                cursor: isStreaming ? "not-allowed" : "pointer",
-                background:
-                  conversation.id === activeConversationId
-                    ? "#eee"
-                    : "transparent",
-                border: "1px solid #ddd",
-                borderRadius: "6px",
               }}
             >
-              {conversation.title}
-            </button>
+              <button
+                type="button"
+                onClick={() => handleSelectConversation(conversation.id)}
+                disabled={isStreaming}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  textAlign: "left",
+                  background:
+                    conversation.id === activeConversationId
+                      ? "#eee"
+                      : "transparent",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                }}
+              >
+                {conversation.title}
+              </button>
+
+              <button
+                type="button"
+                disabled={isStreaming}
+                onClick={async () => {
+                  const title = window.prompt(
+                    "Rename conversation:",
+                    conversation.title,
+                  );
+
+                  if (!title?.trim()) return;
+
+                  await dispatch(
+                    renameConversation({
+                      conversationId: conversation.id,
+                      title: title.trim(),
+                    }),
+                  );
+                }}
+                title="Rename conversation"
+              >
+                ✎
+              </button>
+
+              <button
+                type="button"
+                disabled={isStreaming}
+                onClick={async () => {
+                  const confirmed = window.confirm("Delete this conversation?");
+
+                  if (!confirmed) return;
+
+                  await dispatch(removeConversation(conversation.id));
+                }}
+                title="Delete conversation"
+              >
+                ×
+              </button>
+            </div>
           ))
         )}
       </aside>
@@ -121,72 +196,115 @@ export const ChatPage = () => {
         </header>
 
         <section
+          ref={messageContainerRef}
           style={{
             flex: 1,
             overflowY: "auto",
             padding: "24px",
           }}
         >
-          {!activeConversationId ? (
-            <div>
-              <h2>Select a conversation</h2>
-              <p>Choose a conversation from the sidebar to start chatting.</p>
+          {messages.length === 0 && !streamingMessage && !isLoading ? (
+            <div
+              style={{
+                display: "flex",
+                height: "100%",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                color: "#666",
+              }}
+            >
+              <div>
+                <h2>Start a conversation</h2>
+                <p>Ask the AI assistant anything.</p>
+              </div>
             </div>
           ) : (
             <>
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  style={{
-                    marginBottom: "16px",
-                  }}
-                >
-                  <strong>
-                    {message.role === "user" ? "You" : "Assistant"}
-                  </strong>
+              {messages.map((message) => {
+                const isUser = message.role === "user";
 
+                return (
                   <div
+                    key={message.id}
                     style={{
-                      marginTop: "4px",
-                      whiteSpace: "pre-wrap",
+                      display: "flex",
+                      justifyContent: isUser ? "flex-end" : "flex-start",
+                      marginBottom: "16px",
                     }}
                   >
-                    {message.content}
+                    <div
+                      style={{
+                        maxWidth: "75%",
+                        padding: "12px 16px",
+                        borderRadius: "12px",
+                        background: isUser ? "#2563eb" : "#f1f1f1",
+                        color: isUser ? "#fff" : "#111",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          marginBottom: "6px",
+                          opacity: 0.7,
+                        }}
+                      >
+                        {isUser ? "You" : "Assistant"}
+                      </div>
+
+                      <div
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {message.content}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {streamingMessage && (
                 <div
                   style={{
+                    display: "flex",
+                    justifyContent: "flex-start",
                     marginBottom: "16px",
                   }}
                 >
-                  <strong>Assistant</strong>
-
                   <div
                     style={{
-                      marginTop: "4px",
-                      whiteSpace: "pre-wrap",
+                      maxWidth: "75%",
+                      padding: "12px 16px",
+                      borderRadius: "12px",
+                      background: "#f1f1f1",
+                      color: "#111",
                     }}
                   >
-                    {streamingMessage.content}
-                    <span>▌</span>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        marginBottom: "6px",
+                        opacity: 0.7,
+                      }}
+                    >
+                      Assistant
+                    </div>
+
+                    <div
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {streamingMessage.content}
+                      <span>▌</span>
+                    </div>
                   </div>
                 </div>
-              )}
-
-              {isLoading && <p>Loading messages...</p>}
-
-              {error && (
-                <p
-                  role="alert"
-                  style={{
-                    color: "red",
-                  }}
-                >
-                  {error}
-                </p>
               )}
             </>
           )}
@@ -220,12 +338,12 @@ export const ChatPage = () => {
 
           {isStreaming ? (
             <button type="button" onClick={stopGeneration}>
-              Stop
+              Stop generating
             </button>
           ) : (
             <button
               type="submit"
-              disabled={!activeConversationId || !input.trim()}
+              disabled={!activeConversationId || !input.trim() || isLoading}
             >
               Send
             </button>
