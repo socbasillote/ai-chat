@@ -15,5 +15,10 @@
     "dev:ai": "npm run dev --workspace=apps/ai",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces"
+  },
+  "dependencies": {
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1"
   }
 }

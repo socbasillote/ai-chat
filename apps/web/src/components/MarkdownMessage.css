@@ -1,0 +1,70 @@
+.markdown-message {
+  overflow-wrap: anywhere;
+}
+
+.markdown-message p {
+  margin: 0 0 12px;
+}
+
+.markdown-message p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-message h1,
+.markdown-message h2,
+.markdown-message h3 {
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+.markdown-message ul,
+.markdown-message ol {
+  padding-left: 24px;
+}
+
+.markdown-message blockquote {
+  margin: 12px 0;
+  padding-left: 12px;
+  border-left: 3px solid #ccc;
+  color: #666;
+}
+
+.markdown-message code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.markdown-message :not(pre) > code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.markdown-message pre {
+  margin: 12px 0;
+  padding: 14px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: #f6f8fa;
+}
+
+.markdown-message pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-message a {
+  overflow-wrap: anywhere;
+}
+
+.markdown-message table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.markdown-message th,
+.markdown-message td {
+  padding: 8px;
+  border: 1px solid #ddd;
+  text-align: left;
+}

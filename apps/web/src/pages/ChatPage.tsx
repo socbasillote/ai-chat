@@ -13,6 +13,7 @@ import {
   removeConversation,
 } from "../store/chatSlice";
 
+import { MarkdownMessage } from "../components/MarkdownMessage";
 import { useAutoScroll } from "../hooks/use-auto-scroll";
 
 export const ChatPage = () => {
@@ -253,14 +254,18 @@ export const ChatPage = () => {
                         {isUser ? "You" : "Assistant"}
                       </div>
 
-                      <div
-                        style={{
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        {message.content}
-                      </div>
+                      {isUser ? (
+                        <div
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {message.content}
+                        </div>
+                      ) : (
+                        <MarkdownMessage content={message.content} />
+                      )}
                     </div>
                   </div>
                 );
@@ -294,13 +299,9 @@ export const ChatPage = () => {
                       Assistant
                     </div>
 
-                    <div
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      {streamingMessage.content}
+                    <div>
+                      <MarkdownMessage content={streamingMessage.content} />
+
                       <span>▌</span>
                     </div>
                   </div>
