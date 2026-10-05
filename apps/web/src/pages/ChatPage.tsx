@@ -14,6 +14,7 @@ import {
 } from "../store/chatSlice";
 
 import { MarkdownMessage } from "../components/MarkdownMessage";
+import { MessageActions } from "../components/MessageActions";
 import { useAutoScroll } from "../hooks/use-auto-scroll";
 
 export const ChatPage = () => {
@@ -264,7 +265,10 @@ export const ChatPage = () => {
                           {message.content}
                         </div>
                       ) : (
-                        <MarkdownMessage content={message.content} />
+                        <div>
+                          <MarkdownMessage content={message.content} />
+                          <MessageActions content={message.content} />
+                        </div>
                       )}
                     </div>
                   </div>

@@ -40,11 +40,7 @@
 }
 
 .markdown-message pre {
-  margin: 12px 0;
-  padding: 14px;
   overflow-x: auto;
-  border-radius: 8px;
-  background: #f6f8fa;
 }
 
 .markdown-message pre code {
@@ -67,4 +63,51 @@
   padding: 8px;
   border: 1px solid #ddd;
   text-align: left;
+}
+.code-block {
+  margin: 12px 0;
+  overflow: hidden;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f6f8fa;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid #ddd;
+  background: #eef0f2;
+}
+
+.code-language {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: lowercase;
+  color: #555;
+}
+
+.code-copy-button {
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.code-copy-button:hover {
+  background: #f0f0f0;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+}
+
+.code-block pre code {
+  background: transparent;
+  padding: 0;
 }
