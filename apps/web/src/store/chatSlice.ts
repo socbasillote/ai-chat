@@ -28,6 +28,8 @@ interface ChatState {
   conversationRevision: number;
   autoTitleConversationIds: string[];
   conversations: Conversation[];
+  conversationsStatus: "idle" | "loading" | "succeeded" | "failed";
+  conversationsError: string | null;
   activeConversationId: string | null;
   messages: Message[];
   streamingMessage: Message | null;
@@ -43,6 +45,8 @@ const initialState: ChatState = {
   conversationRevision: 0,
   autoTitleConversationIds: [],
   conversations: [],
+  conversationsStatus: "idle",
+  conversationsError: null,
   activeConversationId: null,
   messages: [],
   streamingMessage: null,
@@ -79,6 +83,7 @@ interface ConversationListResult extends SessionResult<Conversation[]> {
 interface SessionError {
   accountId: string | null;
   sessionVersion: number;
+  conversationRevision?: number;
   message: string;
 }
 
@@ -117,6 +122,7 @@ export const fetchConversations = createAsyncThunk<
       return rejectWithValue({
         accountId,
         sessionVersion,
+        conversationRevision,
         message: "Authentication required.",
       });
     }
@@ -147,6 +153,7 @@ export const fetchConversations = createAsyncThunk<
       return rejectWithValue({
         accountId,
         sessionVersion,
+        conversationRevision,
         message:
           error instanceof Error ? error.message : "Unable to load conversations.",
       });
@@ -605,11 +612,26 @@ const chatSlice = createSlice({
       )
       .addCase(initializeAuth.rejected, (state) => resetForSession(state, null))
       .addCase(fetchConversations.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
+        state.conversationsStatus = "loading";
+        state.conversationsError = null;
       })
       .addCase(fetchConversations.fulfilled, (state, action) => {
         if (
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
+        if (state.conversationRevision === action.payload.conversationRevision) {
+          state.conversations = action.payload.data;
+        }
+        state.conversationsStatus = "succeeded";
+        state.conversationsError = null;
+      })
+      .addCase(fetchConversations.rejected, (state, action) => {
+        if (
+          !action.payload ||
           state.accountId !== action.payload.accountId ||
           state.sessionVersion !== action.payload.sessionVersion ||
           state.conversationRevision !== action.payload.conversationRevision
@@ -617,20 +639,8 @@ const chatSlice = createSlice({
           return;
         }
 
-        state.isLoading = false;
-        state.conversations = action.payload.data;
-      })
-      .addCase(fetchConversations.rejected, (state, action) => {
-        if (
-          !action.payload ||
-          state.accountId !== action.payload.accountId ||
-          state.sessionVersion !== action.payload.sessionVersion
-        ) {
-          return;
-        }
-
-        state.isLoading = false;
-        state.error = action.payload.message;
+        state.conversationsStatus = "failed";
+        state.conversationsError = action.payload.message;
       })
 
       .addCase(fetchMessages.pending, (state) => {
@@ -676,6 +686,8 @@ const chatSlice = createSlice({
 
         state.conversationRevision += 1;
         state.isLoading = false;
+        state.conversationsStatus = "succeeded";
+        state.conversationsError = null;
 
         state.conversations.unshift(action.payload.data);
         if (action.meta.arg === INITIAL_CONVERSATION_TITLE) {

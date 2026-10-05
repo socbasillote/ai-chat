@@ -83,6 +83,8 @@ export const ChatPage = () => {
   const user = useAppSelector((state) => state.auth.user);
   const {
     conversations,
+    conversationsStatus,
+    conversationsError,
     activeConversationId,
     error: chatError,
     titleError,
@@ -290,12 +292,52 @@ export const ChatPage = () => {
             Recent
           </h2>
           <span className="text-xs tabular-nums text-zinc-400">
-            {conversations.length}
+            {conversationsStatus === "succeeded" ? conversations.length : "—"}
           </span>
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-          {conversations.length === 0 ? (
+          {conversationsStatus === "loading" ||
+          conversationsStatus === "idle" ? (
+            <ul
+              className="space-y-2 px-1 pt-2"
+              aria-label="Loading conversations"
+              aria-busy="true"
+            >
+              {Array.from({ length: 5 }, (_, index) => (
+                <li
+                  key={index}
+                  className="flex h-10 items-center gap-2.5 rounded-xl px-2"
+                >
+                  <span className="size-4 shrink-0 animate-pulse rounded bg-zinc-200" />
+                  <span
+                    className={`h-3 animate-pulse rounded bg-zinc-200 ${
+                      index % 2 === 0 ? "w-3/4" : "w-1/2"
+                    }`}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : conversationsStatus === "failed" ? (
+            <div
+              className="mx-1 mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-4 text-center"
+              role="alert"
+            >
+              <p className="text-xs font-medium text-rose-800">
+                Conversations are unavailable
+              </p>
+              <p className="mt-1 break-words text-[11px] leading-4 text-rose-700">
+                {conversationsError || "Unable to load conversations."}
+              </p>
+              <button
+                type="button"
+                className="mt-3 rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-800 transition hover:bg-rose-100 focus-visible:outline-rose-600"
+                onClick={() => void dispatch(fetchConversations())}
+              >
+                Try again
+              </button>
+            </div>
+          ) : conversations.length === 0 ? (
             <div className="mx-2 mt-3 rounded-xl border border-dashed border-zinc-200 px-4 py-5 text-center">
               <p className="text-xs leading-5 text-zinc-500">
                 Your conversations will appear here.
