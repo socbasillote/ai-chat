@@ -1,19 +1,9 @@
 ﻿import type { Conversation } from "../types/chat";
-import { notifyUnauthorized } from "./auth-expiration";
+import { fetchWithSessionExpiration } from "./auth-expiration";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
-const getAccessToken = (): string | null => {
-  return localStorage.getItem("accessToken");
-};
-
-const getAuthHeaders = (): HeadersInit => {
-  const token = getAccessToken();
-
-  if (!token) {
-    throw new Error("Authentication required.");
-  }
-
+const getAuthHeaders = (token: string): HeadersInit => {
   return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -22,14 +12,16 @@ const getAuthHeaders = (): HeadersInit => {
 
 export const createConversation = async (
   title: string,
+  token: string,
 ): Promise<Conversation> => {
-  const response = await fetch(`${API_URL}/api/conversations`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ title }),
-  });
-
-  notifyUnauthorized(response);
+  const response = await fetchWithSessionExpiration(
+    `${API_URL}/api/conversations`,
+    {
+      method: "POST",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify({ title }),
+    },
+  );
 
   const data = await response.json();
 
@@ -43,17 +35,16 @@ export const createConversation = async (
 export const updateConversation = async (
   conversationId: string,
   title: string,
+  token: string,
 ): Promise<Conversation> => {
-  const response = await fetch(
+  const response = await fetchWithSessionExpiration(
     `${API_URL}/api/conversations/${conversationId}`,
     {
       method: "PATCH",
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders(token),
       body: JSON.stringify({ title }),
     },
   );
-
-  notifyUnauthorized(response);
 
   const data = await response.json();
 
@@ -66,16 +57,15 @@ export const updateConversation = async (
 
 export const deleteConversation = async (
   conversationId: string,
+  token: string,
 ): Promise<void> => {
-  const response = await fetch(
+  const response = await fetchWithSessionExpiration(
     `${API_URL}/api/conversations/${conversationId}`,
     {
       method: "DELETE",
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders(token),
     },
   );
-
-  notifyUnauthorized(response);
 
   if (!response.ok) {
     const data = await response.json();

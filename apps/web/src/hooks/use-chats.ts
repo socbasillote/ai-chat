@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { sendChatMessage } from "../store/chatSlice";
 
@@ -9,8 +9,17 @@ export const useChat = () => {
 
   const { messages, streamingMessage, isStreaming, isLoading, error } =
     useAppSelector((state) => state.chat);
+  const sessionVersion = useAppSelector((state) => state.chat.sessionVersion);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    },
+    [sessionVersion],
+  );
 
   const sendMessage = useCallback(
     async (conversationId: string, content: string) => {

@@ -119,7 +119,6 @@ export const ChatPage = () => {
     const result = await dispatch(createNewConversation("New conversation"));
 
     if (createNewConversation.fulfilled.match(result)) {
-      dispatch(setActiveConversation(result.payload.id));
       setSidebarOpen(false);
     }
   };

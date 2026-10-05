@@ -1,30 +1,22 @@
 ﻿import type { StreamEvent } from "../types/chat";
-import { notifyUnauthorized } from "./auth-expiration";
+import { fetchWithSessionExpiration } from "./auth-expiration";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
-
-const getAccessToken = (): string | null => {
-  return localStorage.getItem("accessToken");
-};
 
 export const streamChat = async ({
   conversationId,
   content,
+  token,
   onEvent,
   signal,
 }: {
   conversationId: string;
   content: string;
+  token: string;
   onEvent: (event: StreamEvent) => void;
   signal?: AbortSignal;
 }): Promise<void> => {
-  const token = getAccessToken();
-
-  if (!token) {
-    throw new Error("Authentication required.");
-  }
-
-  const response = await fetch(
+  const response = await fetchWithSessionExpiration(
     `${API_URL}/api/conversations/${conversationId}/messages/stream`,
     {
       method: "POST",
@@ -38,8 +30,6 @@ export const streamChat = async ({
       signal,
     },
   );
-
-  notifyUnauthorized(response);
 
   if (!response.ok) {
     let message = "Unable to send message.";

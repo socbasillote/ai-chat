@@ -1,5 +1,6 @@
-﻿import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { streamChat } from "../services/chat.service";
+import { useAppSelector } from "../store/hooks";
 import type { Message, StreamEvent } from "../types/chat";
 
 interface UseChatStreamResult {
@@ -19,12 +20,31 @@ export const useChatStream = (): UseChatStreamResult => {
   const [error, setError] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionVersion = useAppSelector((state) => state.chat.sessionVersion);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const sessionVersionRef = useRef(sessionVersion);
+  sessionVersionRef.current = sessionVersion;
+
+  useEffect(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsStreaming(false);
+    setStreamingMessage(null);
+    setError(null);
+  }, [sessionVersion]);
 
   const sendMessage = useCallback(
     async (conversationId: string, content: string): Promise<void> => {
       if (isStreaming || !conversationId?.trim()) {
         return;
       }
+
+      if (!accessToken) {
+        setError("Authentication required.");
+        return;
+      }
+
+      const requestSessionVersion = sessionVersion;
 
       setError(null);
       setStreamingMessage(null);
@@ -38,9 +58,14 @@ export const useChatStream = (): UseChatStreamResult => {
         await streamChat({
           conversationId,
           content,
+          token: accessToken,
           signal: controller.signal,
 
           onEvent: (event: StreamEvent) => {
+            if (sessionVersionRef.current !== requestSessionVersion) {
+              return;
+            }
+
             switch (event.type) {
               case "start":
                 setStreamingMessage({
@@ -93,6 +118,10 @@ export const useChatStream = (): UseChatStreamResult => {
           },
         });
       } catch (err) {
+        if (sessionVersionRef.current !== requestSessionVersion) {
+          return;
+        }
+
         if (controller.signal.aborted) {
           return;
         }
@@ -103,12 +132,11 @@ export const useChatStream = (): UseChatStreamResult => {
       } finally {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null;
+          setIsStreaming(false);
         }
-
-        setIsStreaming(false);
       }
     },
-    [isStreaming],
+    [accessToken, isStreaming, sessionVersion],
   );
 
   const stopGeneration = useCallback(() => {

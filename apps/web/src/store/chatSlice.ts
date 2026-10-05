@@ -3,6 +3,7 @@ import {
   createSlice,
   type PayloadAction,
 } from "@reduxjs/toolkit";
+import type { RootState } from "./store";
 
 import {
   createConversation,
@@ -12,10 +13,18 @@ import {
 import type { Conversation, Message } from "../types/chat";
 
 import { streamChat } from "../services/chat.service";
-import { notifyUnauthorized } from "../services/auth-expiration";
-import { logout, sessionExpired } from "./authSlice";
+import { fetchWithSessionExpiration } from "../services/auth-expiration";
+import {
+  initializeAuth,
+  loginUser,
+  logout,
+  registerUser,
+  sessionExpired,
+} from "./authSlice";
 
 interface ChatState {
+  accountId: string | null;
+  sessionVersion: number;
   conversations: Conversation[];
   activeConversationId: string | null;
   messages: Message[];
@@ -26,6 +35,8 @@ interface ChatState {
 }
 
 const initialState: ChatState = {
+  accountId: null,
+  sessionVersion: 0,
   conversations: [],
   activeConversationId: null,
   messages: [],
@@ -37,68 +48,147 @@ const initialState: ChatState = {
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
 
-const getAccessToken = (): string | null => {
-  return localStorage.getItem("accessToken");
+interface SessionResult<T> {
+  accountId: string;
+  sessionVersion: number;
+  data: T;
+}
+
+interface SessionError {
+  accountId: string | null;
+  sessionVersion: number;
+  message: string;
+}
+
+type ChatThunkConfig = {
+  state: RootState;
+  rejectValue: SessionError;
 };
 
-export const fetchConversations = createAsyncThunk(
+const getSession = (state: RootState) => ({
+  accountId: state.auth.user?.id ?? null,
+  sessionVersion: state.chat.sessionVersion,
+  token: state.auth.accessToken,
+});
+
+const resetForSession = (
+  state: ChatState,
+  accountId: string | null,
+): ChatState => ({
+  ...initialState,
+  accountId,
+  sessionVersion: state.sessionVersion + 1,
+});
+
+export const fetchConversations = createAsyncThunk<
+  SessionResult<Conversation[]>,
+  void,
+  ChatThunkConfig
+>(
   "chat/fetchConversations",
-  async () => {
-    const token = getAccessToken();
+  async (_, { getState, rejectWithValue }) => {
+    const session = getSession(getState());
+    const { accountId, sessionVersion, token } = session;
 
-    if (!token) {
-      throw new Error("Authentication required.");
+    if (!accountId || !token) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message: "Authentication required.",
+      });
     }
 
-    const response = await fetch(`${API_URL}/api/conversations`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    notifyUnauthorized(response);
-
-    if (!response.ok) {
-      throw new Error("Unable to load conversations.");
-    }
-
-    const data = await response.json();
-
-    return data.data as Conversation[];
-  },
-);
-
-export const fetchMessages = createAsyncThunk(
-  "chat/fetchMessages",
-  async (conversationId: string) => {
-    const token = getAccessToken();
-
-    if (!token) {
-      throw new Error("Authentication required.");
-    }
-
-    const response = await fetch(
-      `${API_URL}/api/conversations/${conversationId}/messages`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    try {
+      const response = await fetchWithSessionExpiration(
+        `${API_URL}/api/conversations`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      },
-    );
+      );
 
-    notifyUnauthorized(response);
+      if (!response.ok) {
+        throw new Error("Unable to load conversations.");
+      }
 
-    if (!response.ok) {
-      throw new Error("Unable to load messages.");
+      const data = await response.json();
+
+      return {
+        accountId,
+        sessionVersion,
+        data: data.data as Conversation[],
+      };
+    } catch (error) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message:
+          error instanceof Error ? error.message : "Unable to load conversations.",
+      });
     }
-
-    const data = await response.json();
-
-    return data.data as Message[];
   },
 );
 
-export const sendChatMessage = createAsyncThunk(
+export const fetchMessages = createAsyncThunk<
+  SessionResult<Message[]>,
+  string,
+  ChatThunkConfig
+>(
+  "chat/fetchMessages",
+  async (conversationId, { getState, rejectWithValue }) => {
+    const session = getSession(getState());
+    const { accountId, sessionVersion, token } = session;
+
+    if (!accountId || !token) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message: "Authentication required.",
+      });
+    }
+
+    try {
+      const response = await fetchWithSessionExpiration(
+        `${API_URL}/api/conversations/${conversationId}/messages`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Unable to load messages.");
+      }
+
+      const data = await response.json();
+
+      return {
+        accountId,
+        sessionVersion,
+        data: data.data as Message[],
+      };
+    } catch (error) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message:
+          error instanceof Error ? error.message : "Unable to load messages.",
+      });
+    }
+  },
+);
+
+export const sendChatMessage = createAsyncThunk<
+  boolean,
+  {
+    conversationId: string;
+    content: string;
+    signal: AbortSignal;
+  },
+  ChatThunkConfig
+>(
   "chat/sendChatMessage",
   async (
     {
@@ -110,8 +200,18 @@ export const sendChatMessage = createAsyncThunk(
       content: string;
       signal: AbortSignal;
     },
-    { dispatch, rejectWithValue },
+    { dispatch, getState, rejectWithValue },
   ) => {
+    const { accountId, sessionVersion, token } = getSession(getState());
+
+    if (!accountId || !token) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message: "Authentication required.",
+      });
+    }
+
     try {
       dispatch(
         startStreaming({
@@ -122,9 +222,19 @@ export const sendChatMessage = createAsyncThunk(
       await streamChat({
         conversationId,
         content,
+        token,
         signal,
 
         onEvent: (event) => {
+          const currentSession = getSession(getState());
+
+          if (
+            currentSession.accountId !== accountId ||
+            currentSession.sessionVersion !== sessionVersion
+          ) {
+            return;
+          }
+
           switch (event.type) {
             case "start":
               dispatch(addMessage(event.message));
@@ -147,34 +257,77 @@ export const sendChatMessage = createAsyncThunk(
 
       return true;
     } catch (error) {
-      dispatch(clearStreamingMessage());
+      const currentSession = getSession(getState());
+
+      if (
+        currentSession.accountId === accountId &&
+        currentSession.sessionVersion === sessionVersion
+      ) {
+        dispatch(clearStreamingMessage());
+      }
+
       if (signal.aborted) {
         return false;
       }
 
       return rejectWithValue(
-        error instanceof Error ? error.message : "Unable to send message.",
+        {
+          accountId,
+          sessionVersion,
+          message:
+            error instanceof Error ? error.message : "Unable to send message.",
+        },
       );
     }
   },
 );
 
-export const createNewConversation = createAsyncThunk(
+export const createNewConversation = createAsyncThunk<
+  SessionResult<Conversation>,
+  string,
+  ChatThunkConfig
+>(
   "chat/createConversation",
-  async (title: string, { rejectWithValue }) => {
+  async (title, { getState, rejectWithValue }) => {
+    const { accountId, sessionVersion, token } = getSession(getState());
+
+    if (!accountId || !token) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message: "Authentication required.",
+      });
+    }
+
     try {
-      return await createConversation(title);
+      return {
+        accountId,
+        sessionVersion,
+        data: await createConversation(title, token),
+      };
     } catch (error) {
       return rejectWithValue(
-        error instanceof Error
-          ? error.message
-          : "Unable to create conversation.",
+        {
+          accountId,
+          sessionVersion,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to create conversation.",
+        },
       );
     }
   },
 );
 
-export const renameConversation = createAsyncThunk(
+export const renameConversation = createAsyncThunk<
+  SessionResult<Conversation>,
+  {
+    conversationId: string;
+    title: string;
+  },
+  ChatThunkConfig
+>(
   "chat/renameConversation",
   async (
     {
@@ -184,32 +337,74 @@ export const renameConversation = createAsyncThunk(
       conversationId: string;
       title: string;
     },
-    { rejectWithValue },
+    { getState, rejectWithValue },
   ) => {
+    const { accountId, sessionVersion, token } = getSession(getState());
+
+    if (!accountId || !token) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message: "Authentication required.",
+      });
+    }
+
     try {
-      return await updateConversation(conversationId, title);
+      return {
+        accountId,
+        sessionVersion,
+        data: await updateConversation(conversationId, title, token),
+      };
     } catch (error) {
       return rejectWithValue(
-        error instanceof Error
-          ? error.message
-          : "Unable to rename conversation.",
+        {
+          accountId,
+          sessionVersion,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to rename conversation.",
+        },
       );
     }
   },
 );
 
-export const removeConversation = createAsyncThunk(
+export const removeConversation = createAsyncThunk<
+  SessionResult<string>,
+  string,
+  ChatThunkConfig
+>(
   "chat/deleteConversation",
-  async (conversationId: string, { rejectWithValue }) => {
-    try {
-      await deleteConversation(conversationId);
+  async (conversationId, { getState, rejectWithValue }) => {
+    const { accountId, sessionVersion, token } = getSession(getState());
 
-      return conversationId;
+    if (!accountId || !token) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message: "Authentication required.",
+      });
+    }
+
+    try {
+      await deleteConversation(conversationId, token);
+
+      return {
+        accountId,
+        sessionVersion,
+        data: conversationId,
+      };
     } catch (error) {
       return rejectWithValue(
-        error instanceof Error
-          ? error.message
-          : "Unable to delete conversation.",
+        {
+          accountId,
+          sessionVersion,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to delete conversation.",
+        },
       );
     }
   },
@@ -295,19 +490,44 @@ const chatSlice = createSlice({
 
   extraReducers: (builder) => {
     builder
-      .addCase(logout, () => initialState)
-      .addCase(sessionExpired, () => initialState)
+      .addCase(logout, (state) => resetForSession(state, null))
+      .addCase(sessionExpired, (state) => resetForSession(state, null))
+      .addCase(registerUser.fulfilled, (state, action) =>
+        resetForSession(state, action.payload.user.id),
+      )
+      .addCase(loginUser.fulfilled, (state, action) =>
+        resetForSession(state, action.payload.user.id),
+      )
+      .addCase(initializeAuth.fulfilled, (state, action) =>
+        resetForSession(state, action.payload?.user.id ?? null),
+      )
+      .addCase(initializeAuth.rejected, (state) => resetForSession(state, null))
       .addCase(fetchConversations.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
       .addCase(fetchConversations.fulfilled, (state, action) => {
+        if (
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
         state.isLoading = false;
-        state.conversations = action.payload;
+        state.conversations = action.payload.data;
       })
       .addCase(fetchConversations.rejected, (state, action) => {
+        if (
+          !action.payload ||
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
         state.isLoading = false;
-        state.error = action.error.message ?? "Unable to load conversations.";
+        state.error = action.payload.message;
       })
 
       .addCase(fetchMessages.pending, (state) => {
@@ -315,57 +535,106 @@ const chatSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchMessages.fulfilled, (state, action) => {
+        if (
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion ||
+          state.activeConversationId !== action.meta.arg
+        ) {
+          return;
+        }
+
         state.isLoading = false;
-        state.messages = action.payload;
+        state.messages = action.payload.data;
       })
       .addCase(fetchMessages.rejected, (state, action) => {
+        if (
+          !action.payload ||
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
         state.isLoading = false;
-        state.error = action.error.message ?? "Unable to load messages.";
+        state.error = action.payload.message;
       })
       .addCase(createNewConversation.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
       .addCase(createNewConversation.fulfilled, (state, action) => {
+        if (
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
         state.isLoading = false;
 
-        state.conversations.unshift(action.payload);
+        state.conversations.unshift(action.payload.data);
 
-        state.activeConversationId = action.payload.id;
+        state.activeConversationId = action.payload.data.id;
 
         state.messages = [];
         state.streamingMessage = null;
       })
       .addCase(createNewConversation.rejected, (state, action) => {
+        if (
+          !action.payload ||
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
         state.isLoading = false;
-        state.error =
-          (action.payload as string) ?? "Unable to create conversation.";
+        state.error = action.payload.message;
       })
 
       .addCase(renameConversation.pending, (state) => {
         state.error = null;
       })
       .addCase(renameConversation.fulfilled, (state, action) => {
+        if (
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
         const conversation = state.conversations.find(
-          (item) => item.id === action.payload.id,
+          (item) => item.id === action.payload.data.id,
         );
 
         if (conversation) {
-          conversation.title = action.payload.title;
+          conversation.title = action.payload.data.title;
 
-          conversation.updatedAt = action.payload.updatedAt;
+          conversation.updatedAt = action.payload.data.updatedAt;
         }
       })
       .addCase(renameConversation.rejected, (state, action) => {
-        state.error =
-          (action.payload as string) ?? "Unable to rename conversation.";
+        if (
+          action.payload &&
+          state.accountId === action.payload.accountId &&
+          state.sessionVersion === action.payload.sessionVersion
+        ) {
+          state.error = action.payload.message;
+        }
       })
 
       .addCase(removeConversation.pending, (state) => {
         state.error = null;
       })
       .addCase(removeConversation.fulfilled, (state, action) => {
-        const deletedId = action.payload;
+        if (
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
+        const deletedId = action.payload.data;
 
         state.conversations = state.conversations.filter(
           (conversation) => conversation.id !== deletedId,
@@ -378,8 +647,13 @@ const chatSlice = createSlice({
         }
       })
       .addCase(removeConversation.rejected, (state, action) => {
-        state.error =
-          (action.payload as string) ?? "Unable to delete conversation.";
+        if (
+          action.payload &&
+          state.accountId === action.payload.accountId &&
+          state.sessionVersion === action.payload.sessionVersion
+        ) {
+          state.error = action.payload.message;
+        }
       });
   },
 });

@@ -1,5 +1,5 @@
 import type { AuthResponse, User } from "../types/auth";
-import { notifyUnauthorized } from "./auth-expiration";
+import { fetchWithSessionExpiration } from "./auth-expiration";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
@@ -48,13 +48,11 @@ export const login = async (input: LoginInput): Promise<AuthResponse> => {
 };
 
 export const getCurrentUser = async (token: string): Promise<User> => {
-  const response = await fetch(`${API_URL}/api/auth/me`, {
+  const response = await fetchWithSessionExpiration(`${API_URL}/api/auth/me`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
   });
-
-  notifyUnauthorized(response);
 
   if (!response.ok) {
     throw new Error("Unable to retrieve the current user.");
