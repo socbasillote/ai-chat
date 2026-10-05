@@ -11,6 +11,7 @@ interface AuthState {
   isLoading: boolean;
   initialized: boolean;
   error: string | null;
+  notice: string | null;
 }
 
 const accessToken = localStorage.getItem("accessToken");
@@ -22,6 +23,7 @@ const initialState: AuthState = {
   isLoading: false,
   initialized: false,
   error: null,
+  notice: null,
 };
 
 export const registerUser = createAsyncThunk(
@@ -83,7 +85,7 @@ export const initializeAuth = createAsyncThunk(
     } catch {
       localStorage.removeItem("accessToken");
 
-      return rejectWithValue("Session expired.");
+      return rejectWithValue("Unable to verify your session. Please sign in again.");
     }
   },
 );
@@ -98,12 +100,30 @@ const authSlice = createSlice({
       state.accessToken = null;
       state.isAuthenticated = false;
       state.error = null;
+      state.notice = null;
+      state.initialized = true;
+
+      localStorage.removeItem("accessToken");
+    },
+
+    sessionExpired: (state) => {
+      state.user = null;
+      state.accessToken = null;
+      state.isAuthenticated = false;
+      state.isLoading = false;
+      state.initialized = true;
+      state.error = null;
+      state.notice = "Your session has expired. Please sign in again.";
 
       localStorage.removeItem("accessToken");
     },
 
     clearAuthError: (state) => {
       state.error = null;
+    },
+
+    clearAuthNotice: (state) => {
+      state.notice = null;
     },
   },
 
@@ -120,6 +140,7 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.accessToken = action.payload.accessToken;
         state.isAuthenticated = true;
+        state.notice = null;
 
         localStorage.setItem("accessToken", action.payload.accessToken);
       })
@@ -138,6 +159,7 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.accessToken = action.payload.accessToken;
         state.isAuthenticated = true;
+        state.notice = null;
 
         localStorage.setItem("accessToken", action.payload.accessToken);
       })
@@ -160,16 +182,25 @@ const authSlice = createSlice({
           state.isAuthenticated = true;
         }
       })
-      .addCase(initializeAuth.rejected, (state) => {
+      .addCase(initializeAuth.rejected, (state, action) => {
         state.isLoading = false;
         state.initialized = true;
         state.user = null;
         state.accessToken = null;
         state.isAuthenticated = false;
+        state.notice =
+          state.notice ??
+          (action.payload as string) ??
+          "Unable to verify your session. Please sign in again.";
       });
   },
 });
 
-export const { logout, clearAuthError } = authSlice.actions;
+export const {
+  logout,
+  sessionExpired,
+  clearAuthError,
+  clearAuthNotice,
+} = authSlice.actions;
 
 export default authSlice.reducer;

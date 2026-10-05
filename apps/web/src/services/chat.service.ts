@@ -1,4 +1,5 @@
 ﻿import type { StreamEvent } from "../types/chat";
+import { notifyUnauthorized } from "./auth-expiration";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
@@ -37,6 +38,8 @@ export const streamChat = async ({
       signal,
     },
   );
+
+  notifyUnauthorized(response);
 
   if (!response.ok) {
     let message = "Unable to send message.";

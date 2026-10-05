@@ -1,4 +1,5 @@
 ﻿import type { Conversation } from "../types/chat";
+import { notifyUnauthorized } from "./auth-expiration";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
@@ -28,6 +29,8 @@ export const createConversation = async (
     body: JSON.stringify({ title }),
   });
 
+  notifyUnauthorized(response);
+
   const data = await response.json();
 
   if (!response.ok) {
@@ -50,6 +53,8 @@ export const updateConversation = async (
     },
   );
 
+  notifyUnauthorized(response);
+
   const data = await response.json();
 
   if (!response.ok) {
@@ -69,6 +74,8 @@ export const deleteConversation = async (
       headers: getAuthHeaders(),
     },
   );
+
+  notifyUnauthorized(response);
 
   if (!response.ok) {
     const data = await response.json();

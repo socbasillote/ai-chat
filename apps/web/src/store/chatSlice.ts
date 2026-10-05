@@ -12,6 +12,8 @@ import {
 import type { Conversation, Message } from "../types/chat";
 
 import { streamChat } from "../services/chat.service";
+import { notifyUnauthorized } from "../services/auth-expiration";
+import { logout, sessionExpired } from "./authSlice";
 
 interface ChatState {
   conversations: Conversation[];
@@ -54,6 +56,8 @@ export const fetchConversations = createAsyncThunk(
       },
     });
 
+    notifyUnauthorized(response);
+
     if (!response.ok) {
       throw new Error("Unable to load conversations.");
     }
@@ -81,6 +85,8 @@ export const fetchMessages = createAsyncThunk(
         },
       },
     );
+
+    notifyUnauthorized(response);
 
     if (!response.ok) {
       throw new Error("Unable to load messages.");
@@ -289,6 +295,8 @@ const chatSlice = createSlice({
 
   extraReducers: (builder) => {
     builder
+      .addCase(logout, () => initialState)
+      .addCase(sessionExpired, () => initialState)
       .addCase(fetchConversations.pending, (state) => {
         state.isLoading = true;
         state.error = null;

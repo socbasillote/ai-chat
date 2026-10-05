@@ -22,23 +22,11 @@ export const MessageActions = ({ content }: MessageActionsProps) => {
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        marginTop: "8px",
-      }}
-    >
+    <div className="mt-2 flex">
       <button
         type="button"
         onClick={handleCopy}
-        style={{
-          padding: "4px 8px",
-          border: "1px solid #ddd",
-          borderRadius: "5px",
-          background: "#fff",
-          fontSize: "12px",
-          cursor: "pointer",
-        }}
+        className="rounded-md border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
       >
         {copied ? "Copied!" : "Copy response"}
       </button>

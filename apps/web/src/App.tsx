@@ -1,5 +1,4 @@
-﻿import "./App.css";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+﻿import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -54,7 +53,11 @@ const AppRoutes = () => {
   );
 
   if (!initialized) {
-    return <div>Loading...</div>;
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-medium text-slate-500">
+        Loading your workspace...
+      </div>
+    );
   }
 
   return (

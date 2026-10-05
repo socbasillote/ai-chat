@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 
-import { initializeAuth } from "../store/authSlice";
+import {
+  initializeAuth,
+  sessionExpired,
+} from "../store/authSlice";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 
 interface AuthInitializerProps {
@@ -13,9 +16,19 @@ export const AuthInitializer = ({ children }: AuthInitializerProps) => {
   const initialized = useAppSelector((state) => state.auth.initialized);
 
   useEffect(() => {
+    const handleSessionExpired = () => {
+      dispatch(sessionExpired());
+    };
+
+    window.addEventListener("auth:session-expired", handleSessionExpired);
+
     if (!initialized) {
       dispatch(initializeAuth());
     }
+
+    return () => {
+      window.removeEventListener("auth:session-expired", handleSessionExpired);
+    };
   }, [dispatch, initialized]);
 
   if (!initialized) {
