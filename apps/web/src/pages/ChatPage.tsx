@@ -5,6 +5,7 @@ import {
   createNewConversation,
   fetchConversations,
   fetchMessages,
+  clearFinishedSend,
   removeConversation,
   renameConversation,
   setActiveConversation,
@@ -91,7 +92,12 @@ export const ChatPage = () => {
   } = useAppSelector((state) => state.chat);
   const {
     messages,
+    messagesStatus,
+    messagesError,
+    pendingUserMessage,
     streamingMessage,
+    sendStatus,
+    activeSendId,
     isStreaming,
     isLoading,
     error: streamError,
@@ -103,6 +109,13 @@ export const ChatPage = () => {
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId,
   );
+  const activityLabel = {
+    idle: "Ready to help",
+    sending: "Sending message",
+    waiting: "Waiting for response",
+    streaming: "Responding",
+    finishing: "Response complete",
+  }[sendStatus];
   const userInitials =
     user?.name
       .trim()
@@ -121,6 +134,19 @@ export const ChatPage = () => {
       dispatch(fetchMessages(activeConversationId));
     }
   }, [dispatch, activeConversationId]);
+
+  useEffect(() => {
+    if (sendStatus !== "finishing" || !activeSendId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(
+      () => dispatch(clearFinishedSend(activeSendId)),
+      700,
+    );
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeSendId, dispatch, sendStatus]);
 
   useEffect(() => {
     if (!dialog && !openMenuConversationId) {
@@ -164,11 +190,16 @@ export const ChatPage = () => {
 
     const content = input.trim();
 
-    if (!content || !activeConversationId || isStreaming) return;
+    if (!content || !activeConversationId) return;
 
-    setInput("");
-    await sendMessage(activeConversationId, content);
+    if (await sendMessage(activeConversationId, content)) {
+      setInput("");
+    }
   };
+
+  const visibleMessages = pendingUserMessage
+    ? [...messages, pendingUserMessage]
+    : messages;
 
   const openConversationDialog = (
     type: "rename" | "delete",
@@ -490,9 +521,25 @@ export const ChatPage = () => {
               A clear space for your thoughts
             </p>
           </div>
-          <div className="ml-auto hidden items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50/70 px-3 py-1.5 text-[11px] font-medium text-emerald-700 sm:flex">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            Ready to help
+          <div
+            className={`ml-auto hidden items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-medium sm:flex ${
+              sendStatus === "idle"
+                ? "border-emerald-100 bg-emerald-50/70 text-emerald-700"
+                : "border-violet-100 bg-violet-50 text-violet-700"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              className={`size-1.5 rounded-full ${
+                sendStatus === "idle"
+                  ? "bg-emerald-500"
+                  : sendStatus === "finishing"
+                    ? "bg-emerald-500"
+                    : "animate-pulse bg-violet-500"
+              }`}
+            />
+            {activityLabel}
           </div>
         </header>
 
@@ -529,7 +576,66 @@ export const ChatPage = () => {
               </p>
             )}
 
-            {messages.length === 0 && !streamingMessage && !isLoading ? (
+            {messagesStatus === "loading" ? (
+              <div
+                className="flex-1 space-y-8 py-4"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading conversation messages"
+              >
+                {[0, 1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className={`flex items-start gap-3 ${
+                      item % 2 === 0 ? "flex-row-reverse" : ""
+                    }`}
+                  >
+                    <span className="size-8 shrink-0 animate-pulse rounded-full bg-zinc-200" />
+                    <div
+                      className={`w-full max-w-[75%] space-y-2 ${
+                        item % 2 === 0 ? "items-end" : ""
+                      }`}
+                    >
+                      <span className="block h-3 w-24 animate-pulse rounded bg-zinc-200" />
+                      <span
+                        className={`block h-12 animate-pulse rounded-2xl bg-zinc-100 ${
+                          item === 1 ? "w-full" : "w-4/5"
+                        }`}
+                      />
+                      {item === 1 && (
+                        <span className="block h-3 w-2/3 animate-pulse rounded bg-zinc-100" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <span className="sr-only">Loading conversation…</span>
+              </div>
+            ) : messagesStatus === "failed" && messages.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+                <div className="grid size-12 place-items-center rounded-2xl bg-rose-50 text-rose-600">
+                  <Icon name="message" className="size-5" />
+                </div>
+                <h2 className="mt-4 text-base font-semibold text-zinc-900">
+                  Couldn’t load this conversation
+                </h2>
+                <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+                  {messagesError || "Your messages are temporarily unavailable."}
+                </p>
+                {activeConversationId && (
+                  <button
+                    type="button"
+                    className="mt-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800"
+                    onClick={() =>
+                      void dispatch(fetchMessages(activeConversationId))
+                    }
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
+            ) : visibleMessages.length === 0 &&
+              !streamingMessage &&
+              sendStatus === "idle" ? (
               <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
                 <div className="mb-6 grid size-[68px] place-items-center rounded-[22px] bg-gradient-to-br from-violet-100 via-fuchsia-50 to-indigo-100 text-violet-700 shadow-sm ring-1 ring-violet-100">
                   <Icon name="sparkle" className="size-8" />
@@ -560,16 +666,21 @@ export const ChatPage = () => {
                 </div>
               </div>
             ) : (
-              <div className="space-y-7 pb-6 pt-2">
-                {messages.map((message) => {
+              <div
+                className="space-y-7 pb-6 pt-2"
+                aria-live="polite"
+                aria-busy={isStreaming}
+              >
+                {visibleMessages.map((message) => {
                   const isUser = message.role === "user";
+                  const isPending = message.id.startsWith("pending-");
 
                   return (
                     <article
                       key={message.id}
                       className={`flex items-start gap-3 ${
                         isUser ? "flex-row-reverse" : "flex-row"
-                      }`}
+                      } ${isPending ? "animate-[fade-in_180ms_ease-out] opacity-80" : ""}`}
                     >
                       <div
                         className={`grid size-8 shrink-0 place-items-center rounded-full ${
@@ -593,8 +704,15 @@ export const ChatPage = () => {
                         }`}
                       >
                         {isUser ? (
-                          <div className="whitespace-pre-wrap break-words">
-                            {message.content}
+                          <div>
+                            <div className="whitespace-pre-wrap break-words">
+                              {message.content}
+                            </div>
+                            {isPending && (
+                              <p className="mt-1.5 text-[10px] text-zinc-400">
+                                Sending…
+                              </p>
+                            )}
                           </div>
                         ) : (
                           <>
@@ -615,18 +733,45 @@ export const ChatPage = () => {
                     >
                       <Icon name="sparkle" className="size-4" />
                     </div>
-                    <div className="min-w-0 max-w-[88%] pt-1 text-sm leading-7 text-zinc-700 sm:max-w-[80%]">
-                      <MarkdownMessage content={streamingMessage.content} />
-                      <span className="ml-0.5 inline-block h-4 w-1 animate-pulse rounded-full bg-violet-500 align-middle" />
+                    <div className="min-w-0 max-w-[88%] rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm leading-7 text-zinc-700 sm:max-w-[80%]">
+                      {streamingMessage.content ? (
+                        <>
+                          <MarkdownMessage content={streamingMessage.content} />
+                          <span className="ml-0.5 inline-block h-4 w-1 animate-pulse rounded-full bg-violet-500 align-middle" />
+                        </>
+                      ) : (
+                        <div
+                          className="flex items-center gap-2 text-xs font-medium text-zinc-500"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <span className="flex items-center gap-1" aria-hidden="true">
+                            <span className="size-1.5 animate-bounce rounded-full bg-violet-500 [animation-delay:-0.2s]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-violet-500 [animation-delay:-0.1s]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-violet-500" />
+                          </span>
+                          Waiting for the first token…
+                        </div>
+                      )}
                     </div>
                   </article>
                 )}
 
-                {isLoading && messages.length === 0 && (
-                  <div className="flex items-center justify-center gap-2 py-8 text-xs text-zinc-400">
-                    <span className="size-1.5 animate-pulse rounded-full bg-violet-400" />
-                    Loading conversation
+                {sendStatus === "sending" && !streamingMessage && (
+                  <div
+                    className="flex items-center gap-2 pl-11 text-xs font-medium text-zinc-500"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span className="size-3 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
+                    Sending your message…
                   </div>
+                )}
+
+                {sendStatus === "finishing" && (
+                  <p className="pl-11 text-[11px] font-medium text-emerald-700" role="status">
+                    Response complete
+                  </p>
                 )}
               </div>
             )}
@@ -649,7 +794,7 @@ export const ChatPage = () => {
                     ? "Message your assistant..."
                     : "Start a new conversation to begin"
                 }
-                disabled={!activeConversationId || isStreaming}
+                disabled={!activeConversationId || sendStatus !== "idle"}
                 rows={2}
                 aria-label="Message"
               />
@@ -662,16 +807,20 @@ export const ChatPage = () => {
                     type="button"
                     className="flex h-9 items-center gap-2 rounded-xl border border-zinc-200 px-3 text-xs font-semibold text-zinc-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                     onClick={stopGeneration}
+                    aria-label="Stop generating"
                   >
                     <Icon name="stop" className="size-3.5" />
-                    Stop
+                    Stop generating
                   </button>
                 ) : (
                   <button
                     type="submit"
                     className="grid size-9 place-items-center rounded-xl bg-violet-600 text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none"
                     disabled={
-                      !activeConversationId || !input.trim() || isLoading
+                      !activeConversationId ||
+                      !input.trim() ||
+                      isLoading ||
+                      sendStatus !== "idle"
                     }
                     aria-label="Send message"
                     title="Send message"

@@ -32,7 +32,13 @@ interface ChatState {
   conversationsError: string | null;
   activeConversationId: string | null;
   messages: Message[];
+  messagesStatus: "idle" | "loading" | "succeeded" | "failed";
+  messagesError: string | null;
+  messagesRequestId: string | null;
+  pendingUserMessage: Message | null;
   streamingMessage: Message | null;
+  sendStatus: "idle" | "sending" | "waiting" | "streaming" | "finishing";
+  activeSendId: string | null;
   isLoading: boolean;
   isStreaming: boolean;
   error: string | null;
@@ -49,7 +55,13 @@ const initialState: ChatState = {
   conversationsError: null,
   activeConversationId: null,
   messages: [],
+  messagesStatus: "idle",
+  messagesError: null,
+  messagesRequestId: null,
+  pendingUserMessage: null,
   streamingMessage: null,
+  sendStatus: "idle",
+  activeSendId: null,
   isLoading: false,
   isStreaming: false,
   error: null,
@@ -216,6 +228,7 @@ export const sendChatMessage = createAsyncThunk<
   {
     conversationId: string;
     content: string;
+    sendId: string;
     signal: AbortSignal;
   },
   ChatThunkConfig
@@ -225,10 +238,12 @@ export const sendChatMessage = createAsyncThunk<
     {
       conversationId,
       content,
+      sendId,
       signal,
     }: {
       conversationId: string;
       content: string;
+      sendId: string;
       signal: AbortSignal;
     },
     { dispatch, getState, rejectWithValue },
@@ -249,6 +264,8 @@ export const sendChatMessage = createAsyncThunk<
       dispatch(
         startStreaming({
           conversationId,
+          content,
+          sendId,
         }),
       );
 
@@ -263,14 +280,15 @@ export const sendChatMessage = createAsyncThunk<
 
           if (
             currentSession.accountId !== accountId ||
-            currentSession.sessionVersion !== sessionVersion
+            currentSession.sessionVersion !== sessionVersion ||
+            getState().chat.activeSendId !== sendId
           ) {
             return;
           }
 
           switch (event.type) {
             case "start":
-              dispatch(addMessage(event.message));
+              dispatch(confirmPendingUserMessage(event.message));
               break;
 
             case "chunk":
@@ -316,9 +334,14 @@ export const sendChatMessage = createAsyncThunk<
 
       if (
         currentSession.accountId === accountId &&
-        currentSession.sessionVersion === sessionVersion
+        currentSession.sessionVersion === sessionVersion &&
+        getState().chat.activeSendId === sendId
       ) {
-        dispatch(clearStreamingMessage());
+        if (signal.aborted) {
+          dispatch(cancelGeneration(sendId));
+        } else {
+          dispatch(clearStreamingMessage());
+        }
       }
 
       if (signal.aborted) {
@@ -526,7 +549,13 @@ const chatSlice = createSlice({
       state.activeConversationId = action.payload;
 
       state.messages = [];
+      state.messagesStatus = "idle";
+      state.messagesError = null;
+      state.messagesRequestId = null;
+      state.pendingUserMessage = null;
       state.streamingMessage = null;
+      state.sendStatus = "idle";
+      state.activeSendId = null;
       state.error = null;
       state.titleError = null;
     },
@@ -549,6 +578,21 @@ const chatSlice = createSlice({
       }
 
       state.streamingMessage.content += action.payload;
+      state.sendStatus = "streaming";
+    },
+
+    confirmPendingUserMessage: (state, action: PayloadAction<Message>) => {
+      state.pendingUserMessage = null;
+      state.messages.push(action.payload);
+      state.sendStatus = "waiting";
+      state.streamingMessage = {
+        id: "streaming",
+        conversationId: action.payload.conversationId,
+        role: "assistant",
+        content: "",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
     },
 
     setStreaming: (state, action: PayloadAction<boolean>) => {
@@ -561,6 +605,13 @@ const chatSlice = createSlice({
 
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
+      if (action.payload) {
+        state.pendingUserMessage = null;
+        state.streamingMessage = null;
+        state.isStreaming = false;
+        state.sendStatus = "idle";
+        state.activeSendId = null;
+      }
     },
 
     clearChatError: (state) => {
@@ -571,29 +622,66 @@ const chatSlice = createSlice({
       state.messages.push(action.payload);
       state.streamingMessage = null;
       state.isStreaming = false;
+      state.pendingUserMessage = null;
+      state.sendStatus = "finishing";
     },
 
     startStreaming: (
       state,
       action: PayloadAction<{
         conversationId: string;
+        content: string;
+        sendId: string;
       }>,
     ) => {
       state.isStreaming = true;
       state.error = null;
-
-      state.streamingMessage = {
-        id: "streaming",
+      state.pendingUserMessage = {
+        id: `pending-${action.payload.sendId}`,
         conversationId: action.payload.conversationId,
-        role: "assistant",
-        content: "",
+        role: "user",
+        content: action.payload.content,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      state.sendStatus = "sending";
+      state.activeSendId = action.payload.sendId;
+
+      state.streamingMessage = null;
     },
     clearStreamingMessage: (state) => {
+      state.pendingUserMessage = null;
       state.streamingMessage = null;
       state.isStreaming = false;
+      state.sendStatus = "idle";
+      state.activeSendId = null;
+    },
+    clearFinishedSend: (state, action: PayloadAction<string>) => {
+      if (
+        state.sendStatus === "finishing" &&
+        state.activeSendId === action.payload
+      ) {
+        state.sendStatus = "idle";
+        state.activeSendId = null;
+      }
+    },
+    cancelGeneration: (state, action: PayloadAction<string>) => {
+      if (state.activeSendId !== action.payload) {
+        return;
+      }
+
+      if (state.pendingUserMessage) {
+        state.messages.push({
+          ...state.pendingUserMessage,
+          id: `cancelled-${action.payload}`,
+        });
+      }
+
+      state.pendingUserMessage = null;
+      state.streamingMessage = null;
+      state.isStreaming = false;
+      state.sendStatus = "idle";
+      state.activeSendId = null;
     },
   },
 
@@ -643,33 +731,44 @@ const chatSlice = createSlice({
         state.conversationsError = action.payload.message;
       })
 
-      .addCase(fetchMessages.pending, (state) => {
+      .addCase(fetchMessages.pending, (state, action) => {
         state.isLoading = true;
+        state.messagesStatus = "loading";
+        state.messagesError = null;
+        state.messagesRequestId = action.meta.requestId;
         state.error = null;
       })
       .addCase(fetchMessages.fulfilled, (state, action) => {
         if (
           state.accountId !== action.payload.accountId ||
           state.sessionVersion !== action.payload.sessionVersion ||
-          state.activeConversationId !== action.meta.arg
+          state.activeConversationId !== action.meta.arg ||
+          state.messagesRequestId !== action.meta.requestId
         ) {
           return;
         }
 
         state.isLoading = false;
         state.messages = action.payload.data;
+        state.messagesStatus = "succeeded";
+        state.messagesError = null;
+        state.messagesRequestId = null;
       })
       .addCase(fetchMessages.rejected, (state, action) => {
         if (
           !action.payload ||
           state.accountId !== action.payload.accountId ||
-          state.sessionVersion !== action.payload.sessionVersion
+          state.sessionVersion !== action.payload.sessionVersion ||
+          state.activeConversationId !== action.meta.arg ||
+          state.messagesRequestId !== action.meta.requestId
         ) {
           return;
         }
 
         state.isLoading = false;
-        state.error = action.payload.message;
+        state.messagesStatus = "failed";
+        state.messagesError = action.payload.message;
+        state.messagesRequestId = null;
       })
       .addCase(createNewConversation.pending, (state) => {
         state.conversationRevision += 1;
@@ -697,6 +796,10 @@ const chatSlice = createSlice({
         state.activeConversationId = action.payload.data.id;
 
         state.messages = [];
+        state.messagesStatus = "succeeded";
+        state.messagesError = null;
+        state.messagesRequestId = null;
+        state.pendingUserMessage = null;
         state.streamingMessage = null;
       })
       .addCase(createNewConversation.rejected, (state, action) => {
@@ -839,6 +942,7 @@ export const {
   setActiveConversation,
   setMessages,
   addMessage,
+  confirmPendingUserMessage,
   setStreamingMessage,
   appendStreamingContent,
   setStreaming,
@@ -848,6 +952,8 @@ export const {
   startStreaming,
   finishStreaming,
   clearStreamingMessage,
+  clearFinishedSend,
+  cancelGeneration,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
