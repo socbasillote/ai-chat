@@ -25,6 +25,8 @@ import {
 interface ChatState {
   accountId: string | null;
   sessionVersion: number;
+  conversationRevision: number;
+  autoTitleConversationIds: string[];
   conversations: Conversation[];
   activeConversationId: string | null;
   messages: Message[];
@@ -32,11 +34,14 @@ interface ChatState {
   isLoading: boolean;
   isStreaming: boolean;
   error: string | null;
+  titleError: string | null;
 }
 
 const initialState: ChatState = {
   accountId: null,
   sessionVersion: 0,
+  conversationRevision: 0,
+  autoTitleConversationIds: [],
   conversations: [],
   activeConversationId: null,
   messages: [],
@@ -44,14 +49,31 @@ const initialState: ChatState = {
   isLoading: false,
   isStreaming: false,
   error: null,
+  titleError: null,
 };
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+const INITIAL_CONVERSATION_TITLE = "New conversation";
+const MAX_CONVERSATION_TITLE_LENGTH = 60;
+
+const createConversationTitle = (content: string): string => {
+  const title = content.replace(/\s+/g, " ").trim();
+
+  if (title.length <= MAX_CONVERSATION_TITLE_LENGTH) {
+    return title;
+  }
+
+  return `${title.slice(0, MAX_CONVERSATION_TITLE_LENGTH - 1).trimEnd()}…`;
+};
 
 interface SessionResult<T> {
   accountId: string;
   sessionVersion: number;
   data: T;
+}
+
+interface ConversationListResult extends SessionResult<Conversation[]> {
+  conversationRevision: number;
 }
 
 interface SessionError {
@@ -81,7 +103,7 @@ const resetForSession = (
 });
 
 export const fetchConversations = createAsyncThunk<
-  SessionResult<Conversation[]>,
+  ConversationListResult,
   void,
   ChatThunkConfig
 >(
@@ -89,6 +111,7 @@ export const fetchConversations = createAsyncThunk<
   async (_, { getState, rejectWithValue }) => {
     const session = getSession(getState());
     const { accountId, sessionVersion, token } = session;
+    const { conversationRevision } = getState().chat;
 
     if (!accountId || !token) {
       return rejectWithValue({
@@ -117,6 +140,7 @@ export const fetchConversations = createAsyncThunk<
       return {
         accountId,
         sessionVersion,
+        conversationRevision,
         data: data.data as Conversation[],
       };
     } catch (error) {
@@ -213,6 +237,8 @@ export const sendChatMessage = createAsyncThunk<
     }
 
     try {
+      let completed = false;
+
       dispatch(
         startStreaming({
           conversationId,
@@ -245,6 +271,7 @@ export const sendChatMessage = createAsyncThunk<
               break;
 
             case "done":
+              completed = true;
               dispatch(finishStreaming(event.message));
               break;
 
@@ -254,6 +281,27 @@ export const sendChatMessage = createAsyncThunk<
           }
         },
       });
+
+      const currentState = getState();
+
+      if (
+        completed &&
+        currentState.auth.user?.id === accountId &&
+        currentState.chat.sessionVersion === sessionVersion &&
+        currentState.chat.autoTitleConversationIds.includes(conversationId) &&
+        currentState.chat.conversations.some(
+          (conversation) =>
+            conversation.id === conversationId &&
+            conversation.title === INITIAL_CONVERSATION_TITLE,
+        )
+      ) {
+        void dispatch(
+          autoTitleConversation({
+            conversationId,
+            title: createConversationTitle(content),
+          }),
+        );
+      }
 
       return true;
     } catch (error) {
@@ -279,6 +327,59 @@ export const sendChatMessage = createAsyncThunk<
         },
       );
     }
+  },
+);
+
+export const autoTitleConversation = createAsyncThunk<
+  SessionResult<Conversation>,
+  {
+    conversationId: string;
+    title: string;
+  },
+  ChatThunkConfig
+>(
+  "chat/autoTitleConversation",
+  async ({ conversationId, title }, { getState, rejectWithValue }) => {
+    const { accountId, sessionVersion, token } = getSession(getState());
+
+    if (!accountId || !token) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message: "Authentication required.",
+      });
+    }
+
+    try {
+      return {
+        accountId,
+        sessionVersion,
+        data: await updateConversation(conversationId, title, token),
+      };
+    } catch (error) {
+      return rejectWithValue({
+        accountId,
+        sessionVersion,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to update the conversation title.",
+      });
+    }
+  },
+  {
+    condition: ({ conversationId }, { getState }) => {
+      const { chat } = getState();
+
+      return (
+        chat.autoTitleConversationIds.includes(conversationId) &&
+        chat.conversations.some(
+          (conversation) =>
+            conversation.id === conversationId &&
+            conversation.title === INITIAL_CONVERSATION_TITLE,
+        )
+      );
+    },
   },
 );
 
@@ -420,6 +521,7 @@ const chatSlice = createSlice({
       state.messages = [];
       state.streamingMessage = null;
       state.error = null;
+      state.titleError = null;
     },
 
     setMessages: (state, action: PayloadAction<Message[]>) => {
@@ -509,7 +611,8 @@ const chatSlice = createSlice({
       .addCase(fetchConversations.fulfilled, (state, action) => {
         if (
           state.accountId !== action.payload.accountId ||
-          state.sessionVersion !== action.payload.sessionVersion
+          state.sessionVersion !== action.payload.sessionVersion ||
+          state.conversationRevision !== action.payload.conversationRevision
         ) {
           return;
         }
@@ -559,6 +662,7 @@ const chatSlice = createSlice({
         state.error = action.payload.message;
       })
       .addCase(createNewConversation.pending, (state) => {
+        state.conversationRevision += 1;
         state.isLoading = true;
         state.error = null;
       })
@@ -570,9 +674,13 @@ const chatSlice = createSlice({
           return;
         }
 
+        state.conversationRevision += 1;
         state.isLoading = false;
 
         state.conversations.unshift(action.payload.data);
+        if (action.meta.arg === INITIAL_CONVERSATION_TITLE) {
+          state.autoTitleConversationIds.push(action.payload.data.id);
+        }
 
         state.activeConversationId = action.payload.data.id;
 
@@ -592,8 +700,54 @@ const chatSlice = createSlice({
         state.error = action.payload.message;
       })
 
-      .addCase(renameConversation.pending, (state) => {
+      .addCase(autoTitleConversation.pending, (state, action) => {
+        state.conversationRevision += 1;
+        state.autoTitleConversationIds =
+          state.autoTitleConversationIds.filter(
+            (id) => id !== action.meta.arg.conversationId,
+          );
+        state.titleError = null;
+      })
+      .addCase(autoTitleConversation.fulfilled, (state, action) => {
+        if (
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
+        const conversation = state.conversations.find(
+          (item) => item.id === action.payload.data.id,
+        );
+
+        if (
+          conversation &&
+          conversation.title === INITIAL_CONVERSATION_TITLE
+        ) {
+          state.conversationRevision += 1;
+          conversation.title = action.payload.data.title;
+          conversation.updatedAt = action.payload.data.updatedAt;
+        }
+
+        state.titleError = null;
+      })
+      .addCase(autoTitleConversation.rejected, (state, action) => {
+        if (
+          action.payload &&
+          state.accountId === action.payload.accountId &&
+          state.sessionVersion === action.payload.sessionVersion
+        ) {
+          state.titleError = action.payload.message;
+        }
+      })
+      .addCase(renameConversation.pending, (state, action) => {
+        state.conversationRevision += 1;
         state.error = null;
+        state.titleError = null;
+        state.autoTitleConversationIds =
+          state.autoTitleConversationIds.filter(
+            (id) => id !== action.meta.arg.conversationId,
+          );
       })
       .addCase(renameConversation.fulfilled, (state, action) => {
         if (
@@ -608,10 +762,17 @@ const chatSlice = createSlice({
         );
 
         if (conversation) {
+          state.conversationRevision += 1;
           conversation.title = action.payload.data.title;
 
           conversation.updatedAt = action.payload.data.updatedAt;
         }
+
+        state.autoTitleConversationIds =
+          state.autoTitleConversationIds.filter(
+            (id) => id !== action.payload.data.id,
+          );
+        state.titleError = null;
       })
       .addCase(renameConversation.rejected, (state, action) => {
         if (
@@ -624,6 +785,7 @@ const chatSlice = createSlice({
       })
 
       .addCase(removeConversation.pending, (state) => {
+        state.conversationRevision += 1;
         state.error = null;
       })
       .addCase(removeConversation.fulfilled, (state, action) => {
@@ -636,9 +798,12 @@ const chatSlice = createSlice({
 
         const deletedId = action.payload.data;
 
+        state.conversationRevision += 1;
         state.conversations = state.conversations.filter(
           (conversation) => conversation.id !== deletedId,
         );
+        state.autoTitleConversationIds =
+          state.autoTitleConversationIds.filter((id) => id !== deletedId);
 
         if (state.activeConversationId === deletedId) {
           state.activeConversationId = null;

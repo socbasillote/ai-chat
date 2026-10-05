@@ -22,6 +22,7 @@ type IconName =
   | "message"
   | "edit"
   | "trash"
+  | "more"
   | "chevron"
   | "send"
   | "stop"
@@ -41,6 +42,7 @@ const Icon = ({
     message: "M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z",
     edit: "m12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z",
     trash: "M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6",
+    more: "M12 5h.01M12 12h.01M12 19h.01",
     chevron: "m7 10 5 5 5-5",
     send: "m22 2-7 20-4-9-9-4Zm0 0L11 13",
     stop: "M7 7h10v10H7z",
@@ -67,11 +69,23 @@ export const ChatPage = () => {
   const dispatch = useAppDispatch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [openMenuConversationId, setOpenMenuConversationId] = useState<
+    string | null
+  >(null);
+  const [dialog, setDialog] = useState<{
+    type: "rename" | "delete";
+    conversationId: string;
+    title: string;
+  } | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
   const user = useAppSelector((state) => state.auth.user);
   const {
     conversations,
     activeConversationId,
     error: chatError,
+    titleError,
   } = useAppSelector((state) => state.chat);
   const {
     messages,
@@ -106,9 +120,28 @@ export const ChatPage = () => {
     }
   }, [dispatch, activeConversationId]);
 
+  useEffect(() => {
+    if (!dialog && !openMenuConversationId) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDialog(null);
+        setOpenMenuConversationId(null);
+        setActionError(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [dialog, openMenuConversationId]);
+
   const handleSelectConversation = (conversationId: string) => {
     if (isStreaming) return;
 
+    setOpenMenuConversationId(null);
     dispatch(setActiveConversation(conversationId));
     setSidebarOpen(false);
   };
@@ -116,6 +149,7 @@ export const ChatPage = () => {
   const handleNewConversation = async () => {
     if (isStreaming) return;
 
+    setOpenMenuConversationId(null);
     const result = await dispatch(createNewConversation("New conversation"));
 
     if (createNewConversation.fulfilled.match(result)) {
@@ -134,26 +168,70 @@ export const ChatPage = () => {
     await sendMessage(activeConversationId, content);
   };
 
-  const handleRenameConversation = async (
+  const openConversationDialog = (
+    type: "rename" | "delete",
     conversationId: string,
-    currentTitle: string,
+    title: string,
   ) => {
-    const title = window.prompt("Rename conversation:", currentTitle);
-
-    if (!title?.trim()) return;
-
-    await dispatch(
-      renameConversation({
-        conversationId,
-        title: title.trim(),
-      }),
-    );
+    setOpenMenuConversationId(null);
+    setActionError(null);
+    setDialog({ type, conversationId, title });
+    setRenameTitle(title);
   };
 
-  const handleDeleteConversation = async (conversationId: string) => {
-    if (!window.confirm("Delete this conversation?")) return;
+  const handleDialogClose = () => {
+    if (isActionLoading) return;
+    setDialog(null);
+    setActionError(null);
+  };
 
-    await dispatch(removeConversation(conversationId));
+  const handleConversationAction = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    if (!dialog || isActionLoading) return;
+
+    setActionError(null);
+    setIsActionLoading(true);
+
+    try {
+      if (dialog.type === "rename") {
+        const title = renameTitle.trim();
+        if (!title) {
+          setActionError("Enter a conversation title.");
+          return;
+        }
+
+        const result = await dispatch(
+          renameConversation({
+            conversationId: dialog.conversationId,
+            title,
+          }),
+        );
+
+        if (renameConversation.fulfilled.match(result)) {
+          setDialog(null);
+        } else {
+          setActionError(
+            result.payload?.message ?? "Unable to rename conversation.",
+          );
+        }
+      } else {
+        const result = await dispatch(
+          removeConversation(dialog.conversationId),
+        );
+
+        if (removeConversation.fulfilled.match(result)) {
+          setDialog(null);
+        } else {
+          setActionError(
+            result.payload?.message ?? "Unable to delete conversation.",
+          );
+        }
+      }
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   return (
@@ -253,34 +331,65 @@ export const ChatPage = () => {
                       />
                       <span className="truncate">{conversation.title}</span>
                     </button>
-                    <div className="flex shrink-0 items-center opacity-100 sm:opacity-0 sm:transition group-hover:opacity-100 group-focus-within:opacity-100">
+                    <div className="relative shrink-0">
                       <button
                         type="button"
-                        className="grid size-7 place-items-center rounded-md text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-800 disabled:opacity-40"
+                        className="grid size-8 place-items-center rounded-lg text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-800 focus-visible:outline-violet-500 disabled:opacity-40 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                         onClick={() =>
-                          void handleRenameConversation(
-                            conversation.id,
-                            conversation.title,
+                          setOpenMenuConversationId((current) =>
+                            current === conversation.id
+                              ? null
+                              : conversation.id,
                           )
                         }
                         disabled={isStreaming}
-                        title="Rename conversation"
-                        aria-label={`Rename ${conversation.title}`}
-                      >
-                        <Icon name="edit" className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="grid size-7 place-items-center rounded-md text-zinc-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
-                        onClick={() =>
-                          void handleDeleteConversation(conversation.id)
+                        title="Conversation actions"
+                        aria-label={`Actions for ${conversation.title}`}
+                        aria-haspopup="menu"
+                        aria-expanded={
+                          openMenuConversationId === conversation.id
                         }
-                        disabled={isStreaming}
-                        title="Delete conversation"
-                        aria-label={`Delete ${conversation.title}`}
                       >
-                        <Icon name="trash" className="size-3.5" />
+                        <Icon name="more" className="size-4" />
                       </button>
+                      {openMenuConversationId === conversation.id && (
+                        <div
+                          className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-lg shadow-zinc-950/10"
+                          role="menu"
+                          aria-label={`Actions for ${conversation.title}`}
+                        >
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
+                            role="menuitem"
+                            onClick={() =>
+                              openConversationDialog(
+                                "rename",
+                                conversation.id,
+                                conversation.title,
+                              )
+                            }
+                          >
+                            <Icon name="edit" className="size-3.5" />
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-rose-600 transition hover:bg-rose-50"
+                            role="menuitem"
+                            onClick={() =>
+                              openConversationDialog(
+                                "delete",
+                                conversation.id,
+                                conversation.title,
+                              )
+                            }
+                          >
+                            <Icon name="trash" className="size-3.5" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </li>
                 );
@@ -366,6 +475,15 @@ export const ChatPage = () => {
                 role="alert"
               >
                 {streamError}
+              </p>
+            )}
+            {titleError && (
+              <p
+                className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                role="status"
+              >
+                Your message was sent, but the conversation title could not be
+                updated: {titleError}
               </p>
             )}
 
@@ -524,6 +642,93 @@ export const ChatPage = () => {
           </form>
         </footer>
       </main>
+      {dialog && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/40 px-4 py-6 backdrop-blur-[2px]"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              handleDialogClose();
+            }
+          }}
+        >
+          <section
+            className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl shadow-zinc-950/20"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="conversation-dialog-title"
+          >
+            <h2
+              id="conversation-dialog-title"
+              className="text-lg font-semibold tracking-tight text-zinc-900"
+            >
+              {dialog.type === "rename"
+                ? "Rename conversation"
+                : "Delete conversation?"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-500">
+              {dialog.type === "rename"
+                ? "Choose a new name for this conversation."
+                : `“${dialog.title}” and its messages will be permanently deleted.`}
+            </p>
+            <form className="mt-5" onSubmit={handleConversationAction}>
+              {dialog.type === "rename" && (
+                <label
+                  className="block text-sm font-medium text-zinc-700"
+                  htmlFor="conversation-title"
+                >
+                  Conversation name
+                  <input
+                    autoFocus
+                    id="conversation-title"
+                    className="mt-2 min-h-11 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 disabled:bg-zinc-50"
+                    value={renameTitle}
+                    onChange={(event) => setRenameTitle(event.target.value)}
+                    maxLength={200}
+                    required
+                    disabled={isActionLoading}
+                  />
+                </label>
+              )}
+              {actionError && (
+                <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+                  {actionError}
+                </p>
+              )}
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="min-h-10 rounded-lg px-4 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50"
+                  onClick={handleDialogClose}
+                  disabled={isActionLoading}
+                  autoFocus
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`min-h-10 rounded-lg px-4 text-sm font-semibold text-white transition disabled:cursor-wait disabled:opacity-60 ${
+                    dialog.type === "delete"
+                      ? "bg-rose-600 hover:bg-rose-700"
+                      : "bg-zinc-900 hover:bg-zinc-800"
+                  }`}
+                  disabled={
+                    isActionLoading ||
+                    (dialog.type === "rename" && !renameTitle.trim())
+                  }
+                >
+                  {isActionLoading
+                    ? dialog.type === "rename"
+                      ? "Saving..."
+                      : "Deleting..."
+                    : dialog.type === "rename"
+                      ? "Save"
+                      : "Delete conversation"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

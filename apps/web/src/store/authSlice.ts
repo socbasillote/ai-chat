@@ -9,6 +9,7 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitializing: boolean;
   initialized: boolean;
   error: string | null;
   notice: string | null;
@@ -21,6 +22,7 @@ const initialState: AuthState = {
   accessToken,
   isAuthenticated: Boolean(accessToken),
   isLoading: false,
+  isInitializing: false,
   initialized: false,
   error: null,
   notice: null,
@@ -66,7 +68,18 @@ export const loginUser = createAsyncThunk(
   },
 );
 
-export const initializeAuth = createAsyncThunk(
+interface InitializeAuthThunkConfig {
+  state: {
+    auth: AuthState;
+  };
+  rejectValue: string;
+}
+
+export const initializeAuth = createAsyncThunk<
+  { user: User; accessToken: string } | null,
+  void,
+  InitializeAuthThunkConfig
+>(
   "auth/initialize",
   async (_, { rejectWithValue }) => {
     const token = localStorage.getItem("accessToken");
@@ -88,6 +101,10 @@ export const initializeAuth = createAsyncThunk(
       return rejectWithValue("Unable to verify your session. Please sign in again.");
     }
   },
+  {
+    condition: (_, { getState }) =>
+      !getState().auth.initialized && !getState().auth.isInitializing,
+  },
 );
 
 const authSlice = createSlice({
@@ -99,6 +116,7 @@ const authSlice = createSlice({
       state.user = null;
       state.accessToken = null;
       state.isAuthenticated = false;
+      state.isInitializing = false;
       state.error = null;
       state.notice = null;
       state.initialized = true;
@@ -111,6 +129,7 @@ const authSlice = createSlice({
       state.accessToken = null;
       state.isAuthenticated = false;
       state.isLoading = false;
+      state.isInitializing = false;
       state.initialized = true;
       state.error = null;
       state.notice = "Your session has expired. Please sign in again.";
@@ -171,9 +190,11 @@ const authSlice = createSlice({
       // Initialize existing session
       .addCase(initializeAuth.pending, (state) => {
         state.isLoading = true;
+        state.isInitializing = true;
       })
       .addCase(initializeAuth.fulfilled, (state, action) => {
         state.isLoading = false;
+        state.isInitializing = false;
         state.initialized = true;
 
         if (action.payload) {
@@ -184,6 +205,7 @@ const authSlice = createSlice({
       })
       .addCase(initializeAuth.rejected, (state, action) => {
         state.isLoading = false;
+        state.isInitializing = false;
         state.initialized = true;
         state.user = null;
         state.accessToken = null;
