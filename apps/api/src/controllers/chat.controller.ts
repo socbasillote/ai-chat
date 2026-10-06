@@ -7,6 +7,7 @@ import {
   getConversationMessagesForLlama,
 } from "../services/message.service.js";
 import { streamCompletion } from "../services/llama.service.js";
+import { AppError } from "../utils/app-error.js";
 
 type ConversationParams = {
   id: string;
@@ -51,9 +52,11 @@ export const streamChat = async (
 
   let clientDisconnected = false;
 
-  req.on("close", () => {
-    clientDisconnected = true;
-    controller.abort();
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientDisconnected = true;
+      controller.abort();
+    }
   });
 
   try {
@@ -84,12 +87,17 @@ export const streamChat = async (
       return;
     }
 
+    if (!(error instanceof AppError)) {
+      console.error("Unexpected error while streaming chat completion:", error);
+    }
+
     sendSse(res, {
       type: "error",
+      code: error instanceof AppError ? error.code : "INTERNAL_SERVER_ERROR",
       message:
-        error instanceof Error
+        error instanceof AppError
           ? error.message
-          : "An unexpected error occurred.",
+          : "The AI response could not be completed. Please try again.",
     });
 
     res.end();

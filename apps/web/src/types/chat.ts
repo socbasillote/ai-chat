@@ -31,5 +31,6 @@ export type StreamEvent =
     }
   | {
       type: "error";
+      code?: string;
       message: string;
     };

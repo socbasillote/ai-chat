@@ -9,16 +9,28 @@ import chatRoutes from "./routes/chat.routes.js";
 
 import { errorHandler } from "./middleware/error.middleware.js";
 import { env } from "./config/env.js";
+import { checkDatabaseHealth } from "./config/database.js";
+import { checkLlamaHealth } from "./services/llama.service.js";
 
 const app = express();
 
 app.use(cors({ origin: env.corsOrigin }));
 app.use(express.json());
 
-app.get("/api/health", (_req, res) => {
-  res.json({
-    success: true,
-    message: "API is running",
+app.get("/api/health", async (_req, res) => {
+  const [mongodbAvailable, llamaAvailable] = await Promise.all([
+    checkDatabaseHealth(),
+    checkLlamaHealth(),
+  ]);
+  const healthy = mongodbAvailable && llamaAvailable;
+
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? "ok" : "degraded",
+    checks: {
+      api: "ok",
+      mongodb: mongodbAvailable ? "ok" : "unavailable",
+      llama: llamaAvailable ? "ok" : "unavailable",
+    },
   });
 });
 
@@ -33,5 +45,4 @@ app.use("/api/conversations", chatRoutes);
 app.use(errorHandler);
 
 export default app;
-
 

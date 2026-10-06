@@ -3,6 +3,33 @@ import { LlamaChatRequest, LlamaMessage } from "../types/llama.js";
 import { AppError } from "../utils/app-error.js";
 
 const LLAMA_TIMEOUT_MS = 120_000;
+const LLAMA_HEALTH_TIMEOUT_MS = 3_000;
+const LLAMA_UNAVAILABLE_MESSAGE =
+  "The AI service is temporarily unavailable. Please try again.";
+const LLAMA_INFERENCE_MESSAGE =
+  "The AI service could not complete your request. Please try again.";
+const LLAMA_INVALID_RESPONSE_MESSAGE =
+  "The AI service returned an invalid response. Please try again.";
+const LLAMA_EMPTY_RESPONSE_MESSAGE =
+  "The AI service returned an empty response. Please try again.";
+
+const createLlamaError = (
+  message: string,
+  code:
+    | "LLAMA_SERVER_UNAVAILABLE"
+    | "LLAMA_INFERENCE_ERROR"
+    | "LLAMA_INVALID_RESPONSE"
+    | "LLAMA_EMPTY_RESPONSE"
+    | "LLAMA_STREAM_INTERRUPTED",
+): AppError =>
+  new AppError(
+    message,
+    code === "LLAMA_SERVER_UNAVAILABLE" ? 503 : 502,
+    code,
+  );
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
 
 const buildRequestBody = (messages: LlamaMessage[]): LlamaChatRequest => {
   return {
@@ -22,7 +49,7 @@ export const checkLlamaHealth = async (): Promise<boolean> => {
   try {
     const response = await fetch(`${env.llamaServerUrl}/health`, {
       method: "GET",
-      signal: createTimeoutSignal(),
+      signal: AbortSignal.timeout(LLAMA_HEALTH_TIMEOUT_MS),
     });
 
     return response.ok;
@@ -55,46 +82,48 @@ export const generateCompletion = async (
     });
   } catch {
     throw new AppError(
-      "Unable to connect to the Llama inference server.",
+      LLAMA_UNAVAILABLE_MESSAGE,
       503,
       "LLAMA_SERVER_UNAVAILABLE",
     );
   }
 
   if (!response.ok) {
-    let message = "The Llama inference server returned an error.";
-
-    try {
-      const errorBody = (await response.json()) as {
-        error?: {
-          message?: string;
-        };
-      };
-
-      if (errorBody.error?.message) {
-        message = errorBody.error.message;
-      }
-    } catch {
-      // Keep the default error message.
-    }
-
-    throw new AppError(message, 502, "LLAMA_INFERENCE_ERROR");
+    throw createLlamaError(
+      LLAMA_INFERENCE_MESSAGE,
+      "LLAMA_INFERENCE_ERROR",
+    );
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{
-      message?: {
-        content?: string;
-      };
-    }>;
-  };
+  let data: unknown;
 
-  const content = data.choices?.[0]?.message?.content;
+  try {
+    data = await response.json();
+  } catch {
+    throw createLlamaError(
+      LLAMA_INVALID_RESPONSE_MESSAGE,
+      "LLAMA_INVALID_RESPONSE",
+    );
+  }
+
+  if (
+    !isRecord(data) ||
+    !Array.isArray(data.choices) ||
+    !isRecord(data.choices[0]) ||
+    !isRecord(data.choices[0].message) ||
+    typeof data.choices[0].message.content !== "string"
+  ) {
+    throw createLlamaError(
+      LLAMA_INVALID_RESPONSE_MESSAGE,
+      "LLAMA_INVALID_RESPONSE",
+    );
+  }
+
+  const content = data.choices[0].message.content;
 
   if (!content?.trim()) {
-    throw new AppError(
-      "The Llama inference server returned an empty response.",
-      502,
+    throw createLlamaError(
+      LLAMA_EMPTY_RESPONSE_MESSAGE,
       "LLAMA_EMPTY_RESPONSE",
     );
   }
@@ -108,6 +137,10 @@ export const streamCompletion = async (
   signal?: AbortSignal,
 ): Promise<string> => {
   const requestBody = buildRequestBody(messages);
+  const timeoutSignal = createTimeoutSignal();
+  const requestSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
 
   let response: Response;
 
@@ -124,7 +157,7 @@ export const streamCompletion = async (
         max_tokens: requestBody.maxTokens,
         stream: true,
       }),
-      ...(signal ? { signal } : {}),
+      signal: requestSignal,
     });
   } catch (error) {
     if (signal?.aborted) {
@@ -132,37 +165,23 @@ export const streamCompletion = async (
     }
 
     throw new AppError(
-      "Unable to connect to the Llama inference server.",
+      LLAMA_UNAVAILABLE_MESSAGE,
       503,
       "LLAMA_SERVER_UNAVAILABLE",
     );
   }
 
   if (!response.ok) {
-    let message = "The Llama inference server returned an error.";
-
-    try {
-      const errorBody = (await response.json()) as {
-        error?: {
-          message?: string;
-        };
-      };
-
-      if (errorBody.error?.message) {
-        message = errorBody.error.message;
-      }
-    } catch {
-      // Ignore invalid error response bodies.
-    }
-
-    throw new AppError(message, 502, "LLAMA_INFERENCE_ERROR");
+    throw createLlamaError(
+      LLAMA_INFERENCE_MESSAGE,
+      "LLAMA_INFERENCE_ERROR",
+    );
   }
 
   if (!response.body) {
-    throw new AppError(
-      "The Llama inference server returned an empty stream.",
-      502,
-      "LLAMA_EMPTY_STREAM",
+    throw createLlamaError(
+      LLAMA_INVALID_RESPONSE_MESSAGE,
+      "LLAMA_INVALID_RESPONSE",
     );
   }
 
@@ -171,6 +190,7 @@ export const streamCompletion = async (
 
   let buffer = "";
   let fullContent = "";
+  let streamFinished = false;
 
   const processLine = (line: string): boolean => {
     const trimmedLine = line.trim();
@@ -186,26 +206,66 @@ export const streamCompletion = async (
     const data = trimmedLine.slice("data:".length).trim();
 
     if (data === "[DONE]") {
+      streamFinished = true;
       return true;
     }
 
+    let parsed: unknown;
+
     try {
-      const parsed = JSON.parse(data) as {
-        choices?: Array<{
-          delta?: {
-            content?: string;
-          };
-        }>;
-      };
-
-      const content = parsed.choices?.[0]?.delta?.content;
-
-      if (content) {
-        fullContent += content;
-        onChunk(content);
-      }
+      parsed = JSON.parse(data);
     } catch {
-      // Ignore malformed SSE data chunks.
+      throw createLlamaError(
+        LLAMA_INVALID_RESPONSE_MESSAGE,
+        "LLAMA_INVALID_RESPONSE",
+      );
+    }
+
+    if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
+      throw createLlamaError(
+        LLAMA_INVALID_RESPONSE_MESSAGE,
+        "LLAMA_INVALID_RESPONSE",
+      );
+    }
+
+    const choice = parsed.choices[0];
+
+    if (choice === undefined) {
+      return false;
+    }
+
+    if (!isRecord(choice)) {
+      throw createLlamaError(
+        LLAMA_INVALID_RESPONSE_MESSAGE,
+        "LLAMA_INVALID_RESPONSE",
+      );
+    }
+
+    const delta = choice.delta;
+
+    if (!isRecord(delta)) {
+      if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
+        return false;
+      }
+
+      throw createLlamaError(
+        LLAMA_INVALID_RESPONSE_MESSAGE,
+        "LLAMA_INVALID_RESPONSE",
+      );
+    }
+
+    const content = delta.content;
+
+    if (content !== undefined && typeof content !== "string") {
+      throw createLlamaError(
+        LLAMA_INVALID_RESPONSE_MESSAGE,
+        "LLAMA_INVALID_RESPONSE",
+      );
+    }
+
+    if (content) {
+      fullContent += content;
+      onChunk(content);
     }
 
     return false;
@@ -231,24 +291,53 @@ export const streamCompletion = async (
 
         if (finished) {
           await reader.cancel();
-          return fullContent;
+          break;
         }
+      }
+
+      if (streamFinished) {
+        break;
       }
     }
 
-    buffer += decoder.decode();
+    if (!streamFinished) {
+      buffer += decoder.decode();
 
-    if (buffer.trim()) {
-      processLine(buffer);
+      if (buffer.trim()) {
+        processLine(buffer);
+      }
     }
+  } catch (error) {
+    if (signal?.aborted) {
+      throw error;
+    }
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw createLlamaError(
+      timeoutSignal.aborted
+        ? LLAMA_UNAVAILABLE_MESSAGE
+        : "The AI response was interrupted. Please try again.",
+      timeoutSignal.aborted
+        ? "LLAMA_SERVER_UNAVAILABLE"
+        : "LLAMA_STREAM_INTERRUPTED",
+    );
   } finally {
     reader.releaseLock();
   }
 
+  if (!streamFinished) {
+    throw createLlamaError(
+      "The AI response was interrupted. Please try again.",
+      "LLAMA_STREAM_INTERRUPTED",
+    );
+  }
+
   if (!fullContent.trim()) {
-    throw new AppError(
-      "The Llama inference server returned an empty response.",
-      502,
+    throw createLlamaError(
+      LLAMA_EMPTY_RESPONSE_MESSAGE,
       "LLAMA_EMPTY_RESPONSE",
     );
   }
