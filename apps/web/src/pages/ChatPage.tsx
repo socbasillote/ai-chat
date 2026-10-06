@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
@@ -73,6 +73,7 @@ export const ChatPage = () => {
   const dispatch = useAppDispatch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState("");
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [openMenuConversationId, setOpenMenuConversationId] = useState<
     string | null
   >(null);
@@ -183,6 +184,36 @@ export const ChatPage = () => {
   }, [dispatch, activeConversationId]);
 
   useEffect(() => {
+    const composer = composerRef.current;
+
+    if (!composer) {
+      return;
+    }
+
+    composer.style.height = "auto";
+    const maxHeight = 192;
+    composer.style.height = `${Math.min(composer.scrollHeight, maxHeight)}px`;
+    composer.style.overflowY =
+      composer.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [input]);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      return;
+    }
+
+    const handleStreamingEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        stopGeneration();
+      }
+    };
+
+    window.addEventListener("keydown", handleStreamingEscape);
+    return () => window.removeEventListener("keydown", handleStreamingEscape);
+  }, [isStreaming, stopGeneration]);
+
+  useEffect(() => {
     if (sendStatus !== "finishing" || !activeSendId) {
       return;
     }
@@ -237,7 +268,15 @@ export const ChatPage = () => {
 
     const content = input.trim();
 
-    if (!content || !activeConversationId) return;
+    if (
+      !content ||
+      !activeConversationId ||
+      isStreaming ||
+      isLoading ||
+      sendStatus !== "idle"
+    ) {
+      return;
+    }
 
     if (await sendMessage(activeConversationId, content)) {
       setInput("");
@@ -833,9 +872,27 @@ export const ChatPage = () => {
           >
             <div className="rounded-2xl border border-zinc-200 bg-white shadow-[0_8px_30px_rgba(24,24,27,0.06)] transition focus-within:border-violet-300 focus-within:ring-4 focus-within:ring-violet-500/10">
               <textarea
-                className="max-h-48 min-h-[58px] w-full resize-y bg-transparent px-4 pb-2 pt-4 text-sm leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
+                ref={composerRef}
+                className="max-h-48 min-h-[58px] w-full resize-none overflow-y-hidden bg-transparent px-4 pb-2 pt-4 text-sm leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || event.shiftKey) {
+                    return;
+                  }
+
+                  event.preventDefault();
+
+                  if (
+                    input.trim() &&
+                    activeConversationId &&
+                    !isStreaming &&
+                    !isLoading &&
+                    sendStatus === "idle"
+                  ) {
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
                 placeholder={
                   activeConversationId
                     ? "Message your assistant..."
