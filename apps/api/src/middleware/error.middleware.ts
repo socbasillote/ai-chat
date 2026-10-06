@@ -7,6 +7,32 @@ import { AppError } from "../utils/app-error.js";
 import { env } from "../config/env.js";
 
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (error instanceof Error && "type" in error) {
+    if (error.type === "entity.too.large") {
+      res.status(413).json({
+        success: false,
+        error: {
+          code: "REQUEST_TOO_LARGE",
+          message: "Request body exceeds the allowed size.",
+        },
+      });
+
+      return;
+    }
+
+    if (error.type === "entity.parse.failed") {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_JSON",
+          message: "Request body must contain valid JSON.",
+        },
+      });
+
+      return;
+    }
+  }
+
   if (error instanceof ZodError) {
     res.status(400).json({
       success: false,

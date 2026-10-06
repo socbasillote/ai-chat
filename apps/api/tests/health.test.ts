@@ -41,6 +41,8 @@ describe("GET /api/health", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
     expect(JSON.parse(body)).toEqual({
       status: "ok",
       checks: {
@@ -54,6 +56,23 @@ describe("GET /api/health", () => {
     expect(body).not.toContain("private-jwt-secret");
     expect(body).not.toContain("llama.internal");
     expect(body).not.toContain("private/model/path");
+  });
+
+  it("rejects request bodies larger than the configured limit", async () => {
+    const response = await fetch(healthUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: "x".repeat(110_000) }),
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: {
+        code: "REQUEST_TOO_LARGE",
+        message: "Request body exceeds the allowed size.",
+      },
+    });
   });
 
   it("reports MongoDB unavailable and overall degraded", async () => {

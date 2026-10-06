@@ -1,5 +1,6 @@
 ﻿import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 
 import authRoutes from "./routes/auth.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
@@ -14,8 +15,9 @@ import { checkLlamaHealth } from "./services/llama.service.js";
 
 const app = express();
 
+app.use(helmet());
 app.use(cors({ origin: env.corsOrigin }));
-app.use(express.json());
+app.use(express.json({ limit: "100kb" }));
 
 app.get("/api/health", async (_req, res) => {
   const [mongodbAvailable, llamaAvailable] = await Promise.all([
@@ -45,4 +47,3 @@ app.use("/api/conversations", chatRoutes);
 app.use(errorHandler);
 
 export default app;
-

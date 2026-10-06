@@ -65,10 +65,11 @@ const readHttpUrl = (name: string, value: string): string => {
   if (
     (url.protocol !== "http:" && url.protocol !== "https:") ||
     url.username ||
-    url.password
+    url.password ||
+    (nodeEnvironment === "production" && url.protocol !== "https:")
   ) {
     throw new Error(
-      `Environment variable ${name} must be an HTTP(S) URL without embedded credentials.`,
+      `Environment variable ${name} must be a secure HTTP(S) URL without embedded credentials.`,
     );
   }
 
@@ -147,10 +148,12 @@ try {
 if (
   (parsedCorsOrigin.protocol !== "http:" &&
     parsedCorsOrigin.protocol !== "https:") ||
-  parsedCorsOrigin.origin !== corsOrigin.replace(/\/+$/, "")
+  parsedCorsOrigin.origin !== corsOrigin.replace(/\/+$/, "") ||
+  (nodeEnvironment === "production" &&
+    parsedCorsOrigin.protocol !== "https:")
 ) {
   throw new Error(
-    "Environment variable CORS_ORIGIN must be a valid HTTP(S) origin without a path.",
+    "Environment variable CORS_ORIGIN must be a secure HTTP(S) origin without a path.",
   );
 }
 

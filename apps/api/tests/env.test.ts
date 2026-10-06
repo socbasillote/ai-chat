@@ -56,6 +56,26 @@ describe("API environment configuration", () => {
     );
   });
 
+  it("requires HTTPS for production CORS and Llama URLs", async () => {
+    setDevelopmentEnvironment();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("JWT_SECRET", "a-long-random-production-secret-value");
+    vi.stubEnv("CORS_ORIGIN", "http://chat.example.com");
+    vi.resetModules();
+
+    await expect(import("../src/config/env.js")).rejects.toThrow(
+      "CORS_ORIGIN must be a secure HTTP(S) origin",
+    );
+
+    vi.stubEnv("CORS_ORIGIN", "https://chat.example.com");
+    vi.stubEnv("LLAMA_SERVER_URL", "http://llama.internal");
+    vi.resetModules();
+
+    await expect(import("../src/config/env.js")).rejects.toThrow(
+      "LLAMA_SERVER_URL must be a secure HTTP(S) URL",
+    );
+  });
+
   it("rejects invalid numeric configuration", async () => {
     setDevelopmentEnvironment();
     vi.stubEnv("PORT", "not-a-port");

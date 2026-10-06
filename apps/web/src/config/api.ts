@@ -19,10 +19,11 @@ try {
 if (
   (parsedApiUrl.protocol !== "http:" && parsedApiUrl.protocol !== "https:") ||
   parsedApiUrl.username ||
-  parsedApiUrl.password
+  parsedApiUrl.password ||
+  (import.meta.env.PROD && parsedApiUrl.protocol !== "https:")
 ) {
   throw new Error(
-    "VITE_API_URL must be an HTTP(S) URL without embedded credentials.",
+    "VITE_API_URL must be a secure HTTP(S) URL without embedded credentials.",
   );
 }
 
