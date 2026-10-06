@@ -21,6 +21,7 @@ import {
   registerUser,
   sessionExpired,
 } from "./authSlice";
+import { API_URL } from "../config/api";
 
 interface ChatState {
   accountId: string | null;
@@ -70,7 +71,6 @@ const initialState: ChatState = {
   titleError: null,
 };
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 const INITIAL_CONVERSATION_TITLE = "New conversation";
 const MAX_CONVERSATION_TITLE_LENGTH = 60;
 

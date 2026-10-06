@@ -1,7 +1,6 @@
-﻿import type { StreamEvent } from "../types/chat";
+import type { StreamEvent } from "../types/chat";
 import { fetchWithSessionExpiration } from "./auth-expiration";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+import { API_URL } from "../config/api";
 
 export const streamChat = async ({
   conversationId,

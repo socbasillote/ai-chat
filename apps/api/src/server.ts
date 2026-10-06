@@ -10,7 +10,16 @@ const startServer = async (): Promise<void> => {
       console.log(`API server running on http://localhost:${env.port}`);
     });
   } catch (error) {
-    console.error("Failed to start server:", error);
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Missing required environment variable:")
+    ) {
+      console.error(error.message);
+    } else {
+      console.error(
+        "Failed to start API server. Verify configuration and service availability.",
+      );
+    }
     process.exit(1);
   }
 };

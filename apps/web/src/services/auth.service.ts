@@ -1,7 +1,6 @@
 import type { AuthResponse, User } from "../types/auth";
 import { fetchWithSessionExpiration } from "./auth-expiration";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+import { API_URL } from "../config/api";
 
 interface RegisterInput {
   name?: string;
