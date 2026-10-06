@@ -29,6 +29,9 @@ type IconName =
   | "stop"
   | "close";
 
+const getLastActiveConversationKey = (accountId: string) =>
+  `ai-chat:last-active-conversation:${accountId}`;
+
 const Icon = ({
   name,
   className = "size-4",
@@ -128,6 +131,50 @@ export const ChatPage = () => {
   useEffect(() => {
     dispatch(fetchConversations());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (
+      !user?.id ||
+      conversationsStatus !== "succeeded" ||
+      activeConversationId
+    ) {
+      return;
+    }
+
+    const storageKey = getLastActiveConversationKey(user.id);
+    const savedConversationId = localStorage.getItem(storageKey);
+
+    if (!savedConversationId) {
+      return;
+    }
+
+    if (
+      conversations.some(
+        (conversation) => conversation.id === savedConversationId,
+      )
+    ) {
+      dispatch(setActiveConversation(savedConversationId));
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+  }, [
+    activeConversationId,
+    conversations,
+    conversationsStatus,
+    dispatch,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    if (!user?.id || !activeConversationId) {
+      return;
+    }
+
+    localStorage.setItem(
+      getLastActiveConversationKey(user.id),
+      activeConversationId,
+    );
+  }, [activeConversationId, user?.id]);
 
   useEffect(() => {
     if (activeConversationId) {
