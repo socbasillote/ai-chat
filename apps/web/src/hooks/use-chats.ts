@@ -15,6 +15,7 @@ export const useChat = () => {
     streamingMessage,
     sendStatus,
     activeSendId,
+    activeSubmissionId,
     isStreaming,
     isLoading,
     error,
@@ -38,7 +39,11 @@ export const useChat = () => {
   const sendMessage = useCallback(
     async (conversationId: string, content: string): Promise<boolean> => {
       if (
-        sendStatusRef.current !== "idle" ||
+        (sendStatusRef.current !== "idle" &&
+          !(
+            sendStatusRef.current === "finishing" &&
+            activeSubmissionId === null
+          )) ||
         (abortControllerRef.current &&
           !abortControllerRef.current.signal.aborted)
       ) {
@@ -70,7 +75,7 @@ export const useChat = () => {
 
       return true;
     },
-    [dispatch],
+    [activeSubmissionId, dispatch],
   );
 
   const stopGeneration = useCallback(() => {
@@ -95,6 +100,7 @@ export const useChat = () => {
     streamingMessage,
     sendStatus,
     activeSendId,
+    activeSubmissionId,
     isStreaming,
     isLoading,
     error,

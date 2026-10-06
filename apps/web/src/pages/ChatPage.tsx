@@ -102,6 +102,7 @@ export const ChatPage = () => {
     streamingMessage,
     sendStatus,
     activeSendId,
+    activeSubmissionId,
     isStreaming,
     isLoading,
     error: streamError,
@@ -113,6 +114,9 @@ export const ChatPage = () => {
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId,
   );
+  const canSubmit =
+    sendStatus === "idle" ||
+    (sendStatus === "finishing" && activeSubmissionId === null);
   const activityLabel = {
     idle: "Ready to help",
     sending: "Sending message",
@@ -273,7 +277,7 @@ export const ChatPage = () => {
       !activeConversationId ||
       isStreaming ||
       isLoading ||
-      sendStatus !== "idle"
+      !canSubmit
     ) {
       return;
     }
@@ -888,7 +892,7 @@ export const ChatPage = () => {
                     activeConversationId &&
                     !isStreaming &&
                     !isLoading &&
-                    sendStatus === "idle"
+                    canSubmit
                   ) {
                     event.currentTarget.form?.requestSubmit();
                   }
@@ -898,7 +902,7 @@ export const ChatPage = () => {
                     ? "Message your assistant..."
                     : "Start a new conversation to begin"
                 }
-                disabled={!activeConversationId || sendStatus !== "idle"}
+                disabled={!activeConversationId || !canSubmit}
                 rows={2}
                 aria-label="Message"
               />
@@ -924,7 +928,7 @@ export const ChatPage = () => {
                       !activeConversationId ||
                       !input.trim() ||
                       isLoading ||
-                      sendStatus !== "idle"
+                      !canSubmit
                     }
                     aria-label="Send message"
                     title="Send message"

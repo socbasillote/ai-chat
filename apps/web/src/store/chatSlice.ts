@@ -31,6 +31,7 @@ interface ChatState {
   conversationsStatus: "idle" | "loading" | "succeeded" | "failed";
   conversationsError: string | null;
   activeConversationId: string | null;
+  activeSubmissionId: string | null;
   messages: Message[];
   messagesStatus: "idle" | "loading" | "succeeded" | "failed";
   messagesError: string | null;
@@ -54,6 +55,7 @@ const initialState: ChatState = {
   conversationsStatus: "idle",
   conversationsError: null,
   activeConversationId: null,
+  activeSubmissionId: null,
   messages: [],
   messagesStatus: "idle",
   messagesError: null,
@@ -269,6 +271,8 @@ export const sendChatMessage = createAsyncThunk<
         }),
       );
 
+      let streamError: string | null = null;
+
       await streamChat({
         conversationId,
         content,
@@ -301,11 +305,17 @@ export const sendChatMessage = createAsyncThunk<
               break;
 
             case "error":
-              dispatch(setError(event.message));
+              streamError = event.message;
               break;
           }
         },
       });
+
+      if (!completed) {
+        throw new Error(
+          streamError ?? "The AI response was interrupted. Please try again.",
+        );
+      }
 
       const currentState = getState();
 
@@ -340,7 +350,7 @@ export const sendChatMessage = createAsyncThunk<
         if (signal.aborted) {
           dispatch(cancelGeneration(sendId));
         } else {
-          dispatch(clearStreamingMessage());
+          dispatch(interruptGeneration(sendId));
         }
       }
 
@@ -348,15 +358,25 @@ export const sendChatMessage = createAsyncThunk<
         return false;
       }
 
+      const message =
+        error instanceof TypeError
+          ? "The AI response was interrupted. Please try again."
+          : error instanceof Error
+            ? error.message
+            : "The AI response was interrupted. Please try again.";
+
       return rejectWithValue(
         {
           accountId,
           sessionVersion,
-          message:
-            error instanceof Error ? error.message : "Unable to send message.",
+          message,
         },
       );
     }
+  },
+  {
+    condition: (_, { getState }) =>
+      getState().chat.activeSubmissionId === null,
   },
 );
 
@@ -556,6 +576,7 @@ const chatSlice = createSlice({
       state.streamingMessage = null;
       state.sendStatus = "idle";
       state.activeSendId = null;
+      state.activeSubmissionId = null;
       state.error = null;
       state.titleError = null;
     },
@@ -611,6 +632,7 @@ const chatSlice = createSlice({
         state.isStreaming = false;
         state.sendStatus = "idle";
         state.activeSendId = null;
+        state.activeSubmissionId = null;
       }
     },
 
@@ -646,6 +668,7 @@ const chatSlice = createSlice({
       };
       state.sendStatus = "sending";
       state.activeSendId = action.payload.sendId;
+      state.activeSubmissionId = action.payload.sendId;
 
       state.streamingMessage = null;
     },
@@ -655,6 +678,26 @@ const chatSlice = createSlice({
       state.isStreaming = false;
       state.sendStatus = "idle";
       state.activeSendId = null;
+      state.activeSubmissionId = null;
+    },
+    interruptGeneration: (state, action: PayloadAction<string>) => {
+      if (state.activeSendId !== action.payload) {
+        return;
+      }
+
+      if (state.pendingUserMessage) {
+        state.messages.push({
+          ...state.pendingUserMessage,
+          id: `interrupted-${action.payload}`,
+        });
+      }
+
+      state.pendingUserMessage = null;
+      state.streamingMessage = null;
+      state.isStreaming = false;
+      state.sendStatus = "idle";
+      state.activeSendId = null;
+      state.activeSubmissionId = null;
     },
     clearFinishedSend: (state, action: PayloadAction<string>) => {
       if (
@@ -663,6 +706,7 @@ const chatSlice = createSlice({
       ) {
         state.sendStatus = "idle";
         state.activeSendId = null;
+        state.activeSubmissionId = null;
       }
     },
     cancelGeneration: (state, action: PayloadAction<string>) => {
@@ -682,6 +726,7 @@ const chatSlice = createSlice({
       state.isStreaming = false;
       state.sendStatus = "idle";
       state.activeSendId = null;
+      state.activeSubmissionId = null;
     },
   },
 
@@ -934,6 +979,26 @@ const chatSlice = createSlice({
         ) {
           state.error = action.payload.message;
         }
+      })
+      .addCase(sendChatMessage.rejected, (state, action) => {
+        if (state.activeSubmissionId === action.meta.arg.sendId) {
+          state.activeSubmissionId = null;
+        }
+
+        if (
+          !action.payload ||
+          state.accountId !== action.payload.accountId ||
+          state.sessionVersion !== action.payload.sessionVersion
+        ) {
+          return;
+        }
+
+        state.error = action.payload.message;
+      })
+      .addCase(sendChatMessage.fulfilled, (state, action) => {
+        if (state.activeSubmissionId === action.meta.arg.sendId) {
+          state.activeSubmissionId = null;
+        }
       });
   },
 });
@@ -952,6 +1017,7 @@ export const {
   startStreaming,
   finishStreaming,
   clearStreamingMessage,
+  interruptGeneration,
   clearFinishedSend,
   cancelGeneration,
 } = chatSlice.actions;
