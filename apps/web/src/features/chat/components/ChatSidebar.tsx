@@ -14,6 +14,8 @@ type ChatSidebarProps = {
   conversationsStatus: "idle" | "loading" | "succeeded" | "failed";
   isStreaming: boolean;
   isLoading: boolean;
+  openMenuConversationId: string | null;
+  onOpenMenuConversation: (conversationId: string | null) => void;
   onNewConversation: () => void;
   onSelectConversation: (conversationId: string) => void;
   onOpenConversationDialog: (
@@ -36,6 +38,8 @@ export const ChatSidebar = ({
   conversationsStatus,
   isStreaming,
   isLoading,
+  openMenuConversationId,
+  onOpenMenuConversation,
   onNewConversation,
   onSelectConversation,
   onOpenConversationDialog,
@@ -215,26 +219,51 @@ export const ChatSidebar = ({
 
                   {!sidebarCollapsed && (
                     <div className="absolute right-2 top-1/2 z-[9999] -translate-y-1/2">
-                      <details className="relative">
+                      <details
+                        className="relative"
+                        open={openMenuConversationId === conversation.id}
+                        onToggle={(event) => {
+                          const nextOpen = (
+                            event.currentTarget as HTMLDetailsElement
+                          ).open;
+
+                          onOpenMenuConversation(
+                            nextOpen ? conversation.id : null,
+                          );
+                        }}
+                      >
                         <summary
+                          data-conversation-menu-button
                           className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700"
                           aria-label={`More options for ${conversation.title}`}
                           title="More options"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            const isOpen =
+                              openMenuConversationId === conversation.id;
+                            onOpenMenuConversation(
+                              isOpen ? null : conversation.id,
+                            );
+                          }}
                         >
                           <ChatIcon name="more" className="size-4" />
                         </summary>
 
-                        <div className="absolute right-0 top-8 z-[99999] w-36 overflow-hidden rounded-lg border border-zinc-200 bg-white p-1 shadow-lg">
+                        <div
+                          data-conversation-menu-panel
+                          className="absolute right-0 top-8 z-[99999] w-36 overflow-hidden rounded-lg border border-zinc-200 bg-white p-1 shadow-lg"
+                        >
                           <button
                             type="button"
                             className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100"
-                            onClick={() =>
+                            onClick={() => {
+                              onOpenMenuConversation(null);
                               onOpenConversationDialog(
                                 "rename",
                                 conversation.id,
                                 conversation.title,
-                              )
-                            }
+                              );
+                            }}
                           >
                             <ChatIcon name="edit" className="size-3.5" />
                             Rename
@@ -243,13 +272,14 @@ export const ChatSidebar = ({
                           <button
                             type="button"
                             className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-rose-600 transition hover:bg-rose-50"
-                            onClick={() =>
+                            onClick={() => {
+                              onOpenMenuConversation(null);
                               onOpenConversationDialog(
                                 "delete",
                                 conversation.id,
                                 conversation.title,
-                              )
-                            }
+                              );
+                            }}
                           >
                             <ChatIcon name="trash" className="size-3.5" />
                             Delete

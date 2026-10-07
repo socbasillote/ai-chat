@@ -207,8 +207,31 @@ export const ChatPage = () => {
       }
     };
 
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      const isDialogClick = !!target?.closest('[role="dialog"]');
+      const isMenuButton = !!target?.closest("[data-conversation-menu-button]");
+      const isMenuPanel = !!target?.closest("[data-conversation-menu-panel]");
+
+      if (dialog) {
+        if (!isDialogClick && !isMenuButton && !isMenuPanel) {
+          setDialog(null);
+          setActionError(null);
+        }
+        return;
+      }
+
+      if (openMenuConversationId && !isMenuButton && !isMenuPanel) {
+        setOpenMenuConversationId(null);
+      }
+    };
+
     window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
+    window.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("mousedown", handleOutsideClick);
+    };
   }, [dialog, openMenuConversationId]);
 
   const visibleMessages = pendingUserMessage
@@ -337,6 +360,8 @@ export const ChatPage = () => {
         conversationsStatus={conversationsStatus}
         isStreaming={isStreaming}
         isLoading={isLoading}
+        openMenuConversationId={openMenuConversationId}
+        onOpenMenuConversation={setOpenMenuConversationId}
         onNewConversation={handleNewConversation}
         onSelectConversation={handleSelectConversation}
         onOpenConversationDialog={openConversationDialog}
