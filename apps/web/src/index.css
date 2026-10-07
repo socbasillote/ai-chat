@@ -3,14 +3,19 @@
 @layer base {
   :root {
     font-family:
-      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
       sans-serif;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     color: #18181b;
-    background: #ffffff;
+    background: #0a0a0f;
   }
 
   html,
@@ -23,6 +28,9 @@
 
   body {
     min-height: 100vh;
+    background:
+      radial-gradient(circle at top, rgba(139, 92, 246, 0.18), transparent 42%),
+      #0a0a0f;
   }
 
   button,
@@ -38,5 +46,172 @@
   input:focus-visible {
     outline: 2px solid #8b5cf6;
     outline-offset: 2px;
+  }
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1.25rem;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(246, 245, 248, 0.18),
+      transparent 35%
+    ),
+    #0a0a0f;
+}
+
+.auth-page__content {
+  width: min(1040px, 100%);
+  display: grid;
+  gap: 2rem;
+  align-items: center;
+  justify-items: center;
+}
+
+.auth-page__visual {
+  width: min(640px, 92vw);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.hero-art {
+  position: relative;
+  width: min(640px, 100%);
+  height: 260px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.45));
+}
+
+.hero-art__stack {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-3deg);
+}
+
+.hero-art__plate {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 89%);
+  border-radius: 22px;
+  border: 2px solid rgba(228, 232, 240, 0.9);
+  background: rgba(26, 26, 31, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.hero-art__plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+}
+
+.hero-art__plate--top {
+  top: 0;
+  height: 57%;
+  background: rgba(15, 15, 18, 0.95);
+}
+
+.hero-art__plate--bottom {
+  bottom: 0;
+  height: 48%;
+  overflow: hidden;
+  border-color: rgba(210, 187, 255, 0.9);
+  background: linear-gradient(
+    135deg,
+    #8b5cf6,
+    #a78bfa 35%,
+    #d946ef 63%,
+    #f472b6 100%
+  );
+}
+
+.hero-art__bottom::before {
+  content: "";
+}
+
+.hero-art__shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      circle at 20% 20%,
+      rgba(255, 255, 255, 0.3),
+      transparent 18%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 30%);
+}
+
+.hero-art__plate--bottom::before {
+  content: "";
+  position: absolute;
+  inset: 6px 10px 10px 10px;
+  border-radius: 18px;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.06) 3px,
+    transparent 3px,
+    transparent 10px
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hero-art__plate--bottom::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12%;
+  height: 12px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.28),
+    rgba(255, 255, 255, 0.08)
+  );
+  border-radius: 999px;
+  filter: blur(3px);
+}
+
+.auth-card {
+  width: min(420px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(228, 232, 240, 0.8);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 1.5rem 1.5rem 1.75rem;
+  box-shadow: 0 18px 55px rgba(31, 15, 45, 0.14);
+}
+
+@media (min-width: 900px) {
+  .auth-page__content {
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 420px);
+    justify-items: center;
+  }
+
+  .auth-page__visual {
+    width: min(620px, 100%);
+  }
+}
+
+@media (max-width: 599px) {
+  .hero-art {
+    height: 200px;
+  }
+
+  .auth-card {
+    padding: 1.25rem 1rem 1.5rem;
   }
 }

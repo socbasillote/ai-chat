@@ -26,7 +26,7 @@ export const MessageActions = ({ content }: MessageActionsProps) => {
       <button
         type="button"
         onClick={handleCopy}
-        className="rounded-md border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+        className="rounded-md border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:border-zinc-200 hover:bg-zinc-50 hover:text-zinc-700"
       >
         {copied ? "Copied!" : "Copy response"}
       </button>

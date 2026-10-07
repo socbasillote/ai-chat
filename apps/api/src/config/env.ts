@@ -22,11 +22,7 @@ const readInteger = (
   const rawValue = process.env[name]?.trim();
   const value = rawValue ? Number(rawValue) : defaultValue;
 
-  if (
-    !Number.isInteger(value) ||
-    value < minimum ||
-    value > maximum
-  ) {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
     throw new Error(
       `Environment variable ${name} must be an integer between ${minimum} and ${maximum}.`,
     );
@@ -133,7 +129,7 @@ const corsOrigin =
   process.env.CORS_ORIGIN?.trim() ||
   (nodeEnvironment === "production"
     ? readRequired("CORS_ORIGIN")
-    : "http://localhost:5173");
+    : "http://localhost:5174");
 
 let parsedCorsOrigin: URL;
 
@@ -149,8 +145,7 @@ if (
   (parsedCorsOrigin.protocol !== "http:" &&
     parsedCorsOrigin.protocol !== "https:") ||
   parsedCorsOrigin.origin !== corsOrigin.replace(/\/+$/, "") ||
-  (nodeEnvironment === "production" &&
-    parsedCorsOrigin.protocol !== "https:")
+  (nodeEnvironment === "production" && parsedCorsOrigin.protocol !== "https:")
 ) {
   throw new Error(
     "Environment variable CORS_ORIGIN must be a secure HTTP(S) origin without a path.",

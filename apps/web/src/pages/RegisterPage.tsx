@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import fmesintellilogo from "../assets/fmesintellilogo.png";
 
 import {
   clearAuthError,
@@ -45,16 +46,14 @@ export const RegisterPage = () => {
   };
 
   return (
-    <main className="grid min-h-screen place-items-center bg-[radial-gradient(ellipse_at_top,rgba(139,92,246,0.12),transparent_55%),#faf9fc] px-5 py-8 text-left text-zinc-900">
-      <section
-        className="w-full max-w-[420px] rounded-[18px] border border-zinc-200/80 bg-white p-6 shadow-[0_18px_55px_rgba(31,15,45,0.08)] sm:p-9"
-        aria-labelledby="auth-title"
-      >
-        <div
-          className="mb-6 grid size-[42px] place-items-center rounded-[13px] bg-zinc-950 text-sm font-bold tracking-wide text-white"
-          aria-hidden="true"
-        >
-          AI
+    <main className="auth-page">
+      <section className="auth-card" aria-labelledby="auth-title">
+        <div className="flex h-8 w-36 items-center mb-10">
+          <img
+            src={fmesintellilogo}
+            alt="Fmesintelli"
+            className="h-full w-full object-contain"
+          />
         </div>
         <h1
           id="auth-title"
@@ -80,7 +79,7 @@ export const RegisterPage = () => {
                 First name
               </label>
               <input
-                className="min-h-11 rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 disabled:cursor-wait disabled:bg-zinc-50"
+                className="min-h-11 rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-4 focus:ring-zinc-500/10 disabled:cursor-wait disabled:bg-zinc-50"
                 id="first-name"
                 value={firstName}
                 onChange={(event) => setFirstName(event.target.value)}
@@ -98,7 +97,7 @@ export const RegisterPage = () => {
                 Last name
               </label>
               <input
-                className="min-h-11 rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 disabled:cursor-wait disabled:bg-zinc-50"
+                className="min-h-11 rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-4 focus:ring-zinc-500/10 disabled:cursor-wait disabled:bg-zinc-50"
                 id="last-name"
                 value={lastName}
                 onChange={(event) => setLastName(event.target.value)}
@@ -116,7 +115,7 @@ export const RegisterPage = () => {
             Email
           </label>
           <input
-            className="min-h-11 rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10"
+            className="min-h-11 rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-4 focus:ring-zinc-500/10"
             id="register-email"
             type="email"
             value={email}
@@ -135,7 +134,7 @@ export const RegisterPage = () => {
           </label>
           <div className="relative">
             <input
-              className="min-h-11 w-full rounded-lg border border-zinc-300 px-3 py-2.5 pr-20 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 disabled:cursor-wait disabled:bg-zinc-50"
+              className="min-h-11 w-full rounded-lg border border-zinc-300 px-3 py-2.5 pr-20 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-4 focus:ring-zinc-500/10 disabled:cursor-wait disabled:bg-zinc-50"
               id="register-password"
               type={showPassword ? "text" : "password"}
               value={password}
@@ -146,7 +145,7 @@ export const RegisterPage = () => {
               required
             />
             <button
-              className="absolute inset-y-0 right-3 my-auto h-fit text-xs font-semibold text-violet-700 hover:text-violet-900 disabled:cursor-wait disabled:opacity-50"
+              className="absolute inset-y-0 right-3 my-auto h-fit text-xs font-semibold text-zinc-700 hover:text-zinc-900 disabled:cursor-wait disabled:opacity-50"
               type="button"
               onClick={() => setShowPassword((visible) => !visible)}
               aria-label={showPassword ? "Hide password" : "Show password"}
@@ -159,7 +158,7 @@ export const RegisterPage = () => {
 
           {notice && (
             <p
-              className="mt-2 rounded-lg bg-violet-50 px-3 py-2.5 text-sm text-violet-800"
+              className="mt-2 rounded-lg bg-zinc-50 px-3 py-2.5 text-sm text-zinc-800"
               role="status"
               aria-live="polite"
             >
@@ -198,7 +197,7 @@ export const RegisterPage = () => {
         <p className="mt-6 text-center text-sm text-zinc-500">
           Already have an account?{" "}
           <Link
-            className="font-semibold text-violet-700 hover:underline"
+            className="font-semibold text-zinc-700 hover:underline"
             to="/login"
           >
             Sign in
